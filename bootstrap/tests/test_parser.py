@@ -578,7 +578,7 @@ class ParserDeclarationTests(ParserTestCase):
             """
         )
 
-        declaration = tree.items[0]
+                declaration = tree.items[0]
 
         self.assertIsInstance(declaration, VariableDeclaration)
         self.assertIsNotNone(declaration.type_annotation)
@@ -588,8 +588,10 @@ class ParserDeclarationTests(ParserTestCase):
         self.assertEqual(
             tuple(part.name for part in parts),
             ("Core", "Types", "Value"),
-    )
-        class ParserExpressionTests(ParserTestCase):
+        )
+
+
+class ParserExpressionTests(ParserTestCase):
     """Tests for expressions."""
 
     def test_identifier_expression(self) -> None:
