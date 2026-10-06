@@ -590,7 +590,7 @@ class ParserDeclarationTests(ParserTestCase):
             ("Core", "Types", "Value"),
     )
         class ParserExpressionTests(ParserTestCase):
-    """Tests for expressions."""
+        """Tests for expressions."""
 
     def test_identifier_expression(self) -> None:
         tree = parse("foo;")
