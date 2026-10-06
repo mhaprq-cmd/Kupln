@@ -32,3 +32,6 @@ jobs:
 
       - name: Run Project Guard
         run: python tools/project-guard/guard.py
+
+      - name: Run Bootstrap tests
+        run: python -m unittest discover -s bootstrap/tests -p "test_*.py"
