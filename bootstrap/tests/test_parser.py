@@ -571,15 +571,14 @@ class ParserDeclarationTests(ParserTestCase):
         self.assertEqual(declaration.name.name, "User")
         self.assertEqual(len(declaration.fields), 2)
 
-    def test_qualified_type_reference(self) -> None:
+        def test_qualified_type_reference(self) -> None:
         tree = parse(
             """
             let value: Core.Types.Value;
             """
         )
 
-                declaration =
-        tree.items[0]
+        declaration = tree.items[0]
 
         self.assertIsInstance(declaration, VariableDeclaration)
         self.assertIsNotNone(declaration.type_annotation)
