@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Sequence
 from bootstrap.lexer.token import Token,TokenKind
-from .ast import (
+from bootstrap.parser.ast import (
 ArrayExpression,AssignmentExpression,BinaryExpression,Block,CallExpression,
 ClassDeclaration,CompilationUnit,ConditionalExpression,EmptyStatement,
 ExportDeclaration,Expression,ExpressionStatement,FieldDeclaration,ForStatement,
