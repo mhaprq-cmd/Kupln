@@ -137,7 +137,7 @@ Semantic rules determine which declarations are legal in a particular scope.
 10. Variable Declarations
 Kupln provides let and var declaration forms.
 variable-declaration
-    = [ variable-modifiers ]
+    = [ declaration-modifiers ]
       variable-keyword
       identifier
       [ type-annotation ]
@@ -295,7 +295,7 @@ for-initializer
     | expression ;
 The declaration form used inside the for header omits its final semicolon:
 variable-declaration-no-semicolon
-    = [ variable-modifiers ]
+    = [ declaration-modifiers ]
       variable-keyword
       identifier
       [ type-annotation ]
