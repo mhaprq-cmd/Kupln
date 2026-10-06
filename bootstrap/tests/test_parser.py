@@ -625,8 +625,7 @@ class ParserExpressionTests(ParserTestCase):
         self.assertEqual(expression.operator, "!")
          def test_await_expression(self) -> None:
         tree = parse("await load();")
-
-        expression = tree.items[0].expression
+ expression = tree.items[0].expression
 
         self.assertIsInstance(expression, UnaryExpression)
         self.assertEqual(expression.operator, "await")
