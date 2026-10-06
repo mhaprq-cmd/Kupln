@@ -10,6 +10,7 @@ Responsibilities:
     - distinguish expected loading failures
 
 This module intentionally does not perform:
+    - source modeling
     - lexical analysis
     - parsing
     - semantic analysis
@@ -20,19 +21,12 @@ This module intentionally does not perform:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
+
+from source_model import SourceFile
 
 
 KUPLN_SOURCE_EXTENSION = ".kpl"
-
-
-@dataclass(frozen=True)
-class SourceFile:
-    """Successfully loaded Kupln source file."""
-
-    path: Path
-    content: str
 
 
 class SourceLoadError(Exception):
@@ -48,7 +42,7 @@ class SourceFileNotFoundError(SourceLoadError):
 
 
 class SourceFileUnreadableError(SourceLoadError):
-    """Raised when the source file cannot be read."""
+    """Raised when the requested source file cannot be read."""
 
 
 class InvalidSourceEncodingError(SourceLoadError):
@@ -107,4 +101,4 @@ def load_source(path: str | Path) -> SourceFile:
     return SourceFile(
         path=source_path.resolve(),
         content=content,
-)
+            )
