@@ -502,7 +502,8 @@ multiplicative-operator
     | "%" ;
 40. Unary Expressions
 unary-expression
-    = unary-operator unary-expression
+    = "await" unary-expression
+    | unary-operator unary-expression
     | postfix-expression ;
 
 unary-operator
@@ -638,15 +639,10 @@ async function name(...) {
     ...
 }
 Await expressions use:
-await-expression
-    = "await" unary-expression ;
 Therefore await is also accepted as an expression form:
 expression
     = assignment-expression ;
 
-primary-expression
-    = ...
-    | await-expression ;
 The semantic restrictions on where await may appear are defined later.
 54. Operator Precedence
 The current precedence hierarchy, from lowest to highest, is:
