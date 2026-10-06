@@ -578,7 +578,8 @@ class ParserDeclarationTests(ParserTestCase):
             """
         )
 
-                declaration = tree.items[0]
+                declaration =
+        tree.items[0]
 
         self.assertIsInstance(declaration, VariableDeclaration)
         self.assertIsNotNone(declaration.type_annotation)
