@@ -13,6 +13,7 @@ from __future__ import annotations
 import unittest
 
 from bootstrap.lexer.lexer import Lexer
+from bootstrap.lexer.token import TokenKind
 from bootstrap.parser.ast import (
     ArrayExpression,
     AssignmentExpression,
@@ -25,6 +26,7 @@ from bootstrap.parser.ast import (
     EmptyStatement,
     ExportDeclaration,
     ExpressionStatement,
+    ForStatement,
     FunctionDeclaration,
     IdentifierExpression,
     IfStatement,
@@ -39,15 +41,13 @@ from bootstrap.parser.ast import (
     RecordDeclaration,
     ReturnStatement,
     StructDeclaration,
+    SuperExpression,
+    ThisExpression,
     TryStatement,
     UnaryExpression,
     VariableDeclaration,
     WhileStatement,
-    ForStatement,
-    ThisExpression,
-    SuperExpression,
 )
-
 
 from bootstrap.parser.parser import Parser, UnexpectedTokenError
 
@@ -77,6 +77,20 @@ class ParserCompilationUnitTests(ParserTestCase):
 
         self.assertIsInstance(tree, CompilationUnit)
         self.assertEqual(tree.items, ())
+
+    def test_comments_are_ignored(self) -> None:
+        tree = parse(
+            """
+            // comment
+            let x = 1;
+            /* another comment */
+            x = 2;
+            """
+        )
+
+        self.assertEqual(len(tree.items), 2)
+        self.assertIsInstance(tree.items[0], VariableDeclaration)
+        self.assertIsInstance(tree.items[1], ExpressionStatement)
 
     def test_multiple_top_level_items(self) -> None:
         tree = parse(
@@ -321,6 +335,20 @@ class ParserStatementTests(ParserTestCase):
         self.assertIsInstance(statement, IfStatement)
         self.assertIsNotNone(statement.else_branch)
 
+    def test_if_without_else(self) -> None:
+        tree = parse(
+            """
+            if (x) {
+                foo();
+            }
+            """
+        )
+
+        statement = tree.items[0]
+
+        self.assertIsInstance(statement, IfStatement)
+        self.assertIsNone(statement.else_branch)
+
     def test_while_statement(self) -> None:
         tree = parse(
             """
@@ -387,6 +415,22 @@ class ParserStatementTests(ParserTestCase):
         self.assertIsNone(statement.condition)
         self.assertIsNone(statement.update)
 
+    def test_for_statement_with_only_condition(self) -> None:
+        tree = parse(
+            """
+            for (; ready; ) {
+                work();
+            }
+            """
+        )
+
+        statement = tree.items[0]
+
+        self.assertIsInstance(statement, ForStatement)
+        self.assertIsNone(statement.initializer)
+        self.assertIsNotNone(statement.condition)
+        self.assertIsNone(statement.update)
+
     def test_try_catch_statement(self) -> None:
         tree = parse(
             """
@@ -404,7 +448,7 @@ class ParserStatementTests(ParserTestCase):
         self.assertEqual(statement.catch_name.name, "error")
 
 
-class ParserTypeAndDeclarationTests(ParserTestCase):
+class ParserDeclarationTests(ParserTestCase):
     """Tests for classes, interfaces, structs, and records."""
 
     def test_class_with_field_and_method(self) -> None:
@@ -425,6 +469,23 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(declaration, ClassDeclaration)
         self.assertEqual(declaration.name.name, "Person")
         self.assertEqual(len(declaration.members), 2)
+
+    def test_class_with_modifiers(self) -> None:
+        tree = parse(
+            """
+            public final class Person {
+                name: String;
+            }
+            """
+        )
+
+        declaration = tree.items[0]
+
+        self.assertIsInstance(declaration, ClassDeclaration)
+        self.assertEqual(
+            declaration.modifiers,
+            ("public", "final"),
+        )
 
     def test_class_extends_and_implements(self) -> None:
         tree = parse(
@@ -459,6 +520,24 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(declaration, InterfaceDeclaration)
         self.assertEqual(declaration.name.name, "Printable")
         self.assertEqual(len(declaration.members), 1)
+
+    def test_interface_extends(self) -> None:
+        tree = parse(
+            """
+            interface Child extends Parent {
+                function run(): Void;
+            }
+            """
+        )
+
+        declaration = tree.items[0]
+
+        self.assertIsInstance(declaration, InterfaceDeclaration)
+        self.assertIsNotNone(declaration.extends)
+        self.assertEqual(
+            declaration.extends.parts[0].name,
+            "Parent",
+        )
 
     def test_struct(self) -> None:
         tree = parse(
@@ -510,41 +589,83 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             tuple(part.name for part in parts),
             ("Core", "Types", "Value"),
         )
-        class ParserExpressionTests(ParserTestCase):
+
+
+class ParserExpressionTests(ParserTestCase):
     """Tests for expressions."""
 
     def test_identifier_expression(self) -> None:
-        tree = parse("value;")
+        tree = parse("foo;")
+
+        statement = tree.items[0]
+
+        self.assertIsInstance(statement, ExpressionStatement)
+        self.assertIsInstance(
+            statement.expression,
+            IdentifierExpression,
+        )
+        self.assertEqual(
+            statement.expression.identifier.name,
+            "foo",
+        )
+
+    def test_integer_literal(self) -> None:
+        tree = parse("42;")
 
         expression = tree.items[0].expression
 
-        self.assertIsInstance(expression, IdentifierExpression)
-        self.assertEqual(
-            expression.identifier.name,
-            "value",
-        )
+        self.assertIsInstance(expression, LiteralExpression)
+        self.assertEqual(expression.kind, "integer")
+        self.assertEqual(expression.value, "42")
 
-    def test_literal_expressions(self) -> None:
+    def test_float_literal(self) -> None:
+        tree = parse("3.14;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, LiteralExpression)
+        self.assertEqual(expression.kind, "float")
+        self.assertEqual(expression.value, "3.14")
+
+    def test_string_literal(self) -> None:
+        tree = parse('"hello";')
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, LiteralExpression)
+        self.assertEqual(expression.kind, "string")
+
+    def test_char_literal(self) -> None:
+        tree = parse("'a';")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, LiteralExpression)
+        self.assertEqual(expression.kind, "char")
+
+    def test_boolean_literals(self) -> None:
         tree = parse(
             """
-            123;
-            3.14;
-            "hello";
-            'x';
             true;
             false;
-            null;
             """
         )
 
-        self.assertEqual(len(tree.items), 7)
+        first = tree.items[0].expression
+        second = tree.items[1].expression
 
-        for item in tree.items:
-            self.assertIsInstance(item, ExpressionStatement)
-            self.assertIsInstance(
-                item.expression,
-                LiteralExpression,
-            )
+        self.assertIsInstance(first, LiteralExpression)
+        self.assertEqual(first.kind, "true")
+        self.assertIsInstance(second, LiteralExpression)
+        self.assertEqual(second.kind, "false")
+
+    def test_null_literal(self) -> None:
+        tree = parse("null;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, LiteralExpression)
+        self.assertEqual(expression.kind, "null")
 
     def test_binary_expression(self) -> None:
         tree = parse("a + b;")
@@ -553,6 +674,14 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
 
         self.assertIsInstance(expression, BinaryExpression)
         self.assertEqual(expression.operator, "+")
+        self.assertIsInstance(
+            expression.left,
+            IdentifierExpression,
+        )
+        self.assertIsInstance(
+            expression.right,
+            IdentifierExpression,
+        )
 
     def test_assignment_expression(self) -> None:
         tree = parse("x = 10;")
@@ -563,15 +692,27 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             expression,
             AssignmentExpression,
         )
+        self.assertIsInstance(
+            expression.target,
+            IdentifierExpression,
+        )
+        self.assertIsInstance(
+            expression.value,
+            LiteralExpression,
+        )
 
     def test_conditional_expression(self) -> None:
-        tree = parse("x > 0 ? 1 : 2;")
+        tree = parse("ready ? 1 : 2;")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(
             expression,
             ConditionalExpression,
+        )
+        self.assertIsInstance(
+            expression.condition,
+            IdentifierExpression,
         )
 
     def test_null_coalescing_expression(self) -> None:
@@ -582,17 +723,37 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(expression, BinaryExpression)
         self.assertEqual(expression.operator, "??")
 
-    def test_logical_precedence(self) -> None:
-        tree = parse("a && b || c;")
+    def test_logical_or_precedence(self) -> None:
+        tree = parse("a || b && c;")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(expression, BinaryExpression)
         self.assertEqual(expression.operator, "||")
-        self.assertIsInstance(expression.left, BinaryExpression)
-        self.assertEqual(expression.left.operator, "&&")
+        self.assertIsInstance(expression.right, BinaryExpression)
+        self.assertEqual(expression.right.operator, "&&")
 
-    def test_arithmetic_precedence(self) -> None:
+    def test_logical_and_precedence(self) -> None:
+        tree = parse("a && b == c;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(expression.operator, "&&")
+        self.assertIsInstance(expression.right, BinaryExpression)
+        self.assertEqual(expression.right.operator, "==")
+
+    def test_equality_precedence(self) -> None:
+        tree = parse("a == b c;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(expression.operator, "==")
+        self.assertIsInstance(expression.right, BinaryExpression)
+        self.assertEqual(expression.right.operator, "<")
+
+    def test_additive_and_multiplicative_precedence(self) -> None:
         tree = parse("a + b * c;")
 
         expression = tree.items[0].expression
@@ -602,38 +763,48 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(expression.right, BinaryExpression)
         self.assertEqual(expression.right.operator, "*")
 
-    def test_parenthesized_expression(self) -> None:
+    def test_left_associative_addition(self) -> None:
+        tree = parse("a + b + c;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(expression.operator, "+")
+        self.assertIsInstance(expression.left, BinaryExpression)
+        self.assertEqual(expression.left.operator, "+")
+            def test_parenthesized_expression(self) -> None:
         tree = parse("(a + b) * c;")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(expression.operator, "*")
         self.assertIsInstance(
             expression.left,
             ParenthesizedExpression,
         )
 
     def test_unary_expression(self) -> None:
-        tree = parse("!value;")
+        tree = parse("-value;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, UnaryExpression)
+        self.assertEqual(expression.operator, "-")
+        self.assertIsInstance(
+            expression.operand,
+            IdentifierExpression,
+        )
+
+    def test_logical_not_expression(self) -> None:
+        tree = parse("!ready;")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(expression, UnaryExpression)
         self.assertEqual(expression.operator, "!")
 
-    def test_await_expression(self) -> None:
-        tree = parse("await load();")
-
-        expression = tree.items[0].expression
-
-        self.assertIsInstance(expression, UnaryExpression)
-        self.assertEqual(expression.operator, "await")
-        self.assertIsInstance(
-            expression.operand,
-            CallExpression,
-        )
-
-    def test_prefix_increment(self) -> None:
+    def test_prefix_increment_expression(self) -> None:
         tree = parse("++value;")
 
         expression = tree.items[0].expression
@@ -641,7 +812,27 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(expression, UnaryExpression)
         self.assertEqual(expression.operator, "++")
 
-    def test_postfix_increment(self) -> None:
+    def test_prefix_decrement_expression(self) -> None:
+        tree = parse("--value;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, UnaryExpression)
+        self.assertEqual(expression.operator, "--")
+
+    def test_await_expression(self) -> None:
+        tree = parse("await task;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, UnaryExpression)
+        self.assertEqual(expression.operator, "await")
+        self.assertIsInstance(
+            expression.operand,
+            IdentifierExpression,
+        )
+
+    def test_postfix_increment_expression(self) -> None:
         tree = parse("value++;")
 
         expression = tree.items[0].expression
@@ -649,16 +840,32 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         self.assertIsInstance(expression, PostfixExpression)
         self.assertEqual(expression.operator, "++")
 
+    def test_postfix_decrement_expression(self) -> None:
+        tree = parse("value--;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, PostfixExpression)
+        self.assertEqual(expression.operator, "--")
+
     def test_function_call(self) -> None:
-        tree = parse("add(1, 2);")
+        tree = parse("foo(1, 2);")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(expression, CallExpression)
         self.assertEqual(len(expression.arguments), 2)
 
+    def test_empty_function_call(self) -> None:
+        tree = parse("foo();")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, CallExpression)
+        self.assertEqual(expression.arguments, ())
+
     def test_member_access(self) -> None:
-        tree = parse("user.name;")
+        tree = parse("object.value;")
 
         expression = tree.items[0].expression
 
@@ -666,7 +873,7 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             expression,
             MemberAccessExpression,
         )
-        self.assertEqual(expression.member.name, "name")
+        self.assertEqual(expression.member.name, "value")
 
     def test_index_access(self) -> None:
         tree = parse("items[index];")
@@ -680,13 +887,21 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
         )
 
     def test_chained_postfix_expression(self) -> None:
-        tree = parse("users[0].name.toString();")
+        tree = parse("object.items[0].value();")
 
         expression = tree.items[0].expression
 
         self.assertIsInstance(expression, CallExpression)
         self.assertIsInstance(
             expression.callee,
+            MemberAccessExpression,
+        )
+        self.assertIsInstance(
+            expression.callee.object,
+            IndexExpression,
+        )
+        self.assertIsInstance(
+            expression.callee.object.object,
             MemberAccessExpression,
         )
 
@@ -701,6 +916,20 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             "Person",
         )
         self.assertEqual(len(expression.arguments), 1)
+
+    def test_new_expression_with_qualified_type(self) -> None:
+        tree = parse("new Core.Person();")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, NewExpression)
+        self.assertEqual(
+            tuple(
+                part.name
+                for part in expression.type_reference.parts
+            ),
+            ("Core", "Person"),
+        )
 
     def test_array_expression(self) -> None:
         tree = parse("[1, 2, 3];")
@@ -732,18 +961,35 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
 
         self.assertIsInstance(expression, SuperExpression)
 
-    def test_assignment_is_right_associative(self) -> None:
+    def test_this_member_access(self) -> None:
+        tree = parse("this.value;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(
+            expression,
+            MemberAccessExpression,
+        )
+        self.assertIsInstance(
+            expression.object,
+            ThisExpression,
+        )
+
+    def test_right_associative_assignment(self) -> None:
         tree = parse("a = b = c;")
 
         expression = tree.items[0].expression
 
-        self.assertIsInstance(expression, AssignmentExpression)
+        self.assertIsInstance(
+            expression,
+            AssignmentExpression,
+        )
         self.assertIsInstance(
             expression.value,
             AssignmentExpression,
         )
 
-    def test_conditional_is_right_associative(self) -> None:
+    def test_right_associative_conditional(self) -> None:
         tree = parse("a ? b : c ? d : e;")
 
         expression = tree.items[0].expression
@@ -757,31 +1003,56 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             ConditionalExpression,
         )
 
-    def test_comments_are_ignored(self) -> None:
+    def test_conditional_contains_expression_in_true_branch(self) -> None:
+        tree = parse("a ? b + c : d;")
+
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(
+            expression,
+            ConditionalExpression,
+        )
+        self.assertIsInstance(
+            expression.when_true,
+            BinaryExpression,
+        )
+
+    def test_comments_inside_expression_are_ignored(self) -> None:
         tree = parse(
             """
-            // first comment
-            let x = 1;
-
-            /*
-                second comment
-            */
-
-            x + 2;
+            a /* comment */ + /* comment */ b;
             """
         )
 
-        self.assertEqual(len(tree.items), 2)
+        expression = tree.items[0].expression
+
+        self.assertIsInstance(expression, BinaryExpression)
+        self.assertEqual(expression.operator, "+")
 
 
 class ParserErrorTests(ParserTestCase):
     """Tests for syntax errors."""
 
-    def test_missing_semicolon_after_variable(self) -> None:
+    def test_missing_variable_semicolon(self) -> None:
         self.assertSyntaxError("let x = 1")
+
+    def test_missing_expression_semicolon(self) -> None:
+        self.assertSyntaxError("x = 1")
 
     def test_missing_identifier_after_let(self) -> None:
         self.assertSyntaxError("let = 1;")
+
+    def test_missing_type_name(self) -> None:
+        self.assertSyntaxError("let value: ;")
+
+    def test_missing_function_name(self) -> None:
+        self.assertSyntaxError(
+            """
+            function () {
+                return;
+            }
+            """
+        )
 
     def test_missing_function_parenthesis(self) -> None:
         self.assertSyntaxError(
@@ -799,16 +1070,7 @@ class ParserErrorTests(ParserTestCase):
             """
         )
 
-    def test_missing_if_closing_parenthesis(self) -> None:
-        self.assertSyntaxError(
-            """
-            if (x > 0 {
-                return;
-            }
-            """
-        )
-
-    def test_missing_block_closing_brace(self) -> None:
+    def test_missing_closing_function_brace(self) -> None:
         self.assertSyntaxError(
             """
             function test() {
@@ -816,7 +1078,43 @@ class ParserErrorTests(ParserTestCase):
             """
         )
 
-    def test_missing_for_semicolon(self) -> None:
+    def test_missing_if_parenthesis(self) -> None:
+        self.assertSyntaxError(
+            """
+            if x {
+                return;
+            }
+            """
+        )
+
+    def test_missing_if_closing_parenthesis(self) -> None:
+        self.assertSyntaxError(
+            """
+            if (x {
+                return;
+            }
+            """
+        )
+
+    def test_missing_while_parenthesis(self) -> None:
+        self.assertSyntaxError(
+            """
+            while x {
+                return;
+            }
+            """
+        )
+
+    def test_missing_for_parenthesis(self) -> None:
+        self.assertSyntaxError(
+            """
+            for let i = 0; i < 10; i++ {
+                return;
+            }
+            """
+        )
+
+    def test_missing_for_first_semicolon(self) -> None:
         self.assertSyntaxError(
             """
             for (let i = 0 i < 10; i++) {
@@ -825,16 +1123,94 @@ class ParserErrorTests(ParserTestCase):
             """
         )
 
-    def test_missing_catch(self) -> None:
+    def test_missing_for_second_semicolon(self) -> None:
         self.assertSyntaxError(
             """
-            try {
-                foo();
+            for (let i = 0; i < 10 i++) {
+                return;
             }
             """
         )
 
-    def test_missing_interface_function_keyword(self) -> None:
+    def test_missing_for_closing_parenthesis(self) -> None:
+        self.assertSyntaxError(
+            """
+            for (let i = 0; i < 10; i++ {
+                return;
+            }
+            """
+        )
+
+    def test_missing_try_block(self) -> None:
+        self.assertSyntaxError(
+            """
+            try
+            catch (error) {
+                return;
+            }
+            """
+        )
+
+    def test_missing_catch_keyword(self) -> None:
+        self.assertSyntaxError(
+            """
+            try {
+                work();
+            }
+            """
+        )
+
+    def test_missing_catch_parameter(self) -> None:
+        self.assertSyntaxError(
+            """
+            try {
+                work();
+            } catch () {
+                recover();
+            }
+            """
+        )
+
+    def test_missing_catch_body(self) -> None:
+        self.assertSyntaxError(
+            """
+            try {
+                work();
+            } catch (error);
+            """
+        )
+
+    def test_missing_class_name(self) -> None:
+        self.assertSyntaxError(
+            """
+            class {
+                value: Int;
+            }
+            """
+        )
+
+    def test_missing_class_body(self) -> None:
+        self.assertSyntaxError("class Person")
+
+    def test_invalid_class_member(self) -> None:
+        self.assertSyntaxError(
+            """
+            class Person {
+                let value = 1;
+            }
+            """
+        )
+
+    def test_missing_class_field_semicolon(self) -> None:
+        self.assertSyntaxError(
+            """
+            class Person {
+                value: Int
+            }
+            """
+        )
+
+    def test_missing_interface_keyword(self) -> None:
         self.assertSyntaxError(
             """
             interface Test {
@@ -843,38 +1219,85 @@ class ParserErrorTests(ParserTestCase):
             """
         )
 
-    def test_missing_class_member_terminator(self) -> None:
+    def test_missing_interface_member_semicolon(self) -> None:
         self.assertSyntaxError(
             """
-            class Test {
-                value: Int
+            interface Test {
+                function run()
             }
             """
         )
 
-    def test_invalid_import(self) -> None:
+    def test_missing_struct_field_semicolon(self) -> None:
+        self.assertSyntaxError(
+            """
+            struct Point {
+                x: Int
+                y: Int;
+            }
+            """
+        )
+
+    def test_missing_record_field_semicolon(self) -> None:
+        self.assertSyntaxError(
+            """
+            record User {
+                id: Int
+                name: String;
+            }
+            """
+        )
+
+    def test_missing_import_string(self) -> None:
         self.assertSyntaxError("import core;")
 
-    def test_invalid_expression(self) -> None:
-        self.assertSyntaxError("; +;")
+    def test_missing_import_semicolon(self) -> None:
+        self.assertSyntaxError('import "core/io"')
 
-    def test_unclosed_parenthesized_expression(self) -> None:
+    def test_missing_export_declaration(self) -> None:
+        self.assertSyntaxError("export;")
+
+    def test_invalid_primary_expression(self) -> None:
+        self.assertSyntaxError("@;")
+
+    def test_missing_closing_parenthesis(self) -> None:
         self.assertSyntaxError("(1 + 2;")
 
-    def test_unclosed_array_expression(self) -> None:
+    def test_missing_closing_array_bracket(self) -> None:
         self.assertSyntaxError("[1, 2;")
 
-    def test_missing_constructor_parenthesis(self) -> None:
-        self.assertSyntaxError("new Person;")
-
-    def test_missing_conditional_colon(self) -> None:
-        self.assertSyntaxError("x ? 1;")
-
     def test_missing_index_closing_bracket(self) -> None:
-        self.assertSyntaxError("items[0;")
+        self.assertSyntaxError("items[index;")
 
     def test_missing_call_closing_parenthesis(self) -> None:
         self.assertSyntaxError("foo(1, 2;")
+
+    def test_missing_member_identifier(self) -> None:
+        self.assertSyntaxError("object.;")
+
+    def test_missing_conditional_colon(self) -> None:
+        self.assertSyntaxError("condition ? a;")
+
+    def test_missing_new_constructor_parenthesis(self) -> None:
+        self.assertSyntaxError("new Person;")
+
+    def test_missing_new_constructor_closing_parenthesis(self) -> None:
+        self.assertSyntaxError("new Person(1;")
+
+    def test_missing_block_closing_brace(self) -> None:
+        self.assertSyntaxError(
+            """
+            {
+                let x = 1;
+            """
+        )
+
+    def test_unexpected_token_after_valid_expression(self) -> None:
+        self.assertSyntaxError("x y;")
+
+    def test_unclosed_comment_is_rejected_by_lexer(self) -> None:
+        with self.assertRaises(Exception):
+            parse("/* comment")
 
     def test_error_contains_source_position(self) -> None:
         with self.assertRaises(UnexpectedTokenError) as context:
@@ -884,6 +1307,181 @@ class ParserErrorTests(ParserTestCase):
 
         self.assertIn("1:5", message)
         self.assertIn("offset", message)
+
+
+class ParserIntegrationTests(ParserTestCase):
+    """Tests for larger parser combinations."""
+
+    def test_complete_small_program(self) -> None:
+        source = """
+            import "core/io";
+
+            export function main(name: String): Int {
+                let count: Int = 0;
+
+                if (name != null) {
+                    count = 1;
+                } else {
+                    count = 2;
+                }
+
+                return count;
+            }
+        """
+
+        tree = parse(source)
+
+        self.assertIsInstance(tree, CompilationUnit)
+        self.assertEqual(len(tree.items), 2)
+        self.assertIsInstance(tree.items[0], ImportDeclaration)
+        self.assertIsInstance(tree.items[1], ExportDeclaration)
+
+        exported = tree.items[1]
+        self.assertIsInstance(
+            exported.declaration,
+            FunctionDeclaration,
+        )
+
+        function = exported.declaration
+
+        self.assertEqual(function.name.name, "main")
+        self.assertEqual(len(function.body.items), 3)
+
+    def test_nested_expression_and_control_flow(self) -> None:
+        source = """
+            function compute(value: Int): Int {
+                while (value > 0) {
+                    value = value - 1;
+                }
+
+                return value * 2 + 1;
+            }
+        """
+
+        tree = parse(source)
+
+        function = tree.items[0]
+
+        self.assertIsInstance(function, FunctionDeclaration)
+        self.assertEqual(len(function.body.items), 2)
+        self.assertIsInstance(
+            function.body.items[0],
+            WhileStatement,
+        )
+        self.assertIsInstance(
+            function.body.items[1],
+            ReturnStatement,
+        )
+
+    def test_nested_calls_and_member_access(self) -> None:
+        source = """
+            function run() {
+                service.client.request(data).result;
+            }
+        """
+
+        tree = parse(source)
+
+        function = tree.items[0]
+        statement = function.body.items[0]
+
+        self.assertIsInstance(
+            statement,
+            ExpressionStatement,
+        )
+        self.assertIsInstance(
+            statement.expression,
+            MemberAccessExpression,
+        )
+
+    def test_class_with_constructor_like_method_and_fields(self) -> None:
+        source = """
+            class User {
+                id: Int;
+                name: String;
+
+                function initialize(id: Int, name: String) {
+                    this.id = id;
+                    this.name = name;
+                }
+
+                function getName(): String {
+                    return this.name;
+                }
+            }
+        """
+
+        tree = parse(source)
+
+        declaration = tree.items[0]
+
+        self.assertIsInstance(
+            declaration,
+            ClassDeclaration,
+        )
+        self.assertEqual(len(declaration.members), 4)
+
+    def test_async_function_with_await(self) -> None:
+        source = """
+            async function load(): Result {
+                let value = await fetch();
+                return value;
+            }
+        """
+
+        tree = parse(source)
+
+        function = tree.items[0]
+
+        self.assertIsInstance(function, FunctionDeclaration)
+        self.assertTrue(function.async_modifier)
+
+        declaration = function.body.items[0]
+
+        self.assertIsInstance(
+            declaration,
+            VariableDeclaration,
+        )
+        self.assertIsInstance(
+            declaration.initializer,
+            UnaryExpression,
+        )
+        self.assertEqual(
+            declaration.initializer.operator,
+            "await",
+        )
+
+
+class ParserTokenBoundaryTests(ParserTestCase):
+    """Tests around lexer-to-parser token boundaries."""
+
+    def test_parser_consumes_eof(self) -> None:
+        tokens = Lexer("let x = 1;").tokenize()
+
+        self.assertEqual(tokens[-1].kind, TokenKind.EOF)
+
+        tree = Parser(tokens).parse()
+
+        self.assertIsInstance(tree, CompilationUnit)
+
+    def test_comments_are_present_before_parser_filtering(self) -> None:
+        tokens = Lexer(
+            """
+            let x = 1; // comment
+            """
+        ).tokenize()
+
+        self.assertTrue(
+            any(token.kind == TokenKind.COMMENT for token in tokens)
+        )
+
+        tree = Parser(tokens).parse()
+
+        self.assertEqual(len(tree.items), 1)
+        self.assertIsInstance(
+            tree.items[0],
+            VariableDeclaration,
+        )
 
 
 if __name__ == "__main__":
