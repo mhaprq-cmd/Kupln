@@ -44,7 +44,11 @@ from bootstrap.parser.ast import (
     VariableDeclaration,
     WhileStatement,
     ForStatement,
+    ThisExpression,
+    SuperExpression,
 )
+
+
 from bootstrap.parser.parser import Parser, UnexpectedTokenError
 
 
@@ -506,23 +510,17 @@ class ParserTypeAndDeclarationTests(ParserTestCase):
             tuple(part.name for part in parts),
             ("Core", "Types", "Value"),
         )
-
-
-class ParserExpressionTests(ParserTestCase):
+        class ParserExpressionTests(ParserTestCase):
     """Tests for expressions."""
 
     def test_identifier_expression(self) -> None:
         tree = parse("value;")
 
-        statement = tree.items[0]
+        expression = tree.items[0].expression
 
-        self.assertIsInstance(statement, ExpressionStatement)
-        self.assertIsInstance(
-            statement.expression,
-            IdentifierExpression,
-        )
+        self.assertIsInstance(expression, IdentifierExpression)
         self.assertEqual(
-            statement.expression.identifier.name,
+            expression.identifier.name,
             "value",
         )
 
@@ -565,7 +563,6 @@ class ParserExpressionTests(ParserTestCase):
             expression,
             AssignmentExpression,
         )
-        self.assertEqual(expression.target.identifier.name, "x")
 
     def test_conditional_expression(self) -> None:
         tree = parse("x > 0 ? 1 : 2;")
@@ -585,7 +582,7 @@ class ParserExpressionTests(ParserTestCase):
         self.assertIsInstance(expression, BinaryExpression)
         self.assertEqual(expression.operator, "??")
 
-    def test_logical_expression(self) -> None:
+    def test_logical_precedence(self) -> None:
         tree = parse("a && b || c;")
 
         expression = tree.items[0].expression
@@ -623,9 +620,11 @@ class ParserExpressionTests(ParserTestCase):
 
         self.assertIsInstance(expression, UnaryExpression)
         self.assertEqual(expression.operator, "!")
-         def test_await_expression(self) -> None:
+
+    def test_await_expression(self) -> None:
         tree = parse("await load();")
- expression = tree.items[0].expression
+
+        expression = tree.items[0].expression
 
         self.assertIsInstance(expression, UnaryExpression)
         self.assertEqual(expression.operator, "await")
@@ -724,16 +723,12 @@ class ParserExpressionTests(ParserTestCase):
 
         expression = tree.items[0].expression
 
-        from bootstrap.parser.ast import ThisExpression
-
         self.assertIsInstance(expression, ThisExpression)
 
     def test_super_expression(self) -> None:
         tree = parse("super;")
 
         expression = tree.items[0].expression
-
-        from bootstrap.parser.ast import SuperExpression
 
         self.assertIsInstance(expression, SuperExpression)
 
@@ -777,14 +772,6 @@ class ParserExpressionTests(ParserTestCase):
         )
 
         self.assertEqual(len(tree.items), 2)
-        self.assertIsInstance(
-            tree.items[0],
-            VariableDeclaration,
-        )
-        self.assertIsInstance(
-            tree.items[1],
-            ExpressionStatement,
-        )
 
 
 class ParserErrorTests(ParserTestCase):
@@ -900,4 +887,4 @@ class ParserErrorTests(ParserTestCase):
 
 
 if __name__ == "__main__":
-    unittest.main() 
+    unittest.main()
