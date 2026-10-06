@@ -1,0 +1,136 @@
+name: Kupln Project Guard
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kupln-project-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Project Guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Guard repository foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "========================================"
+          echo "        Kupln Project Guard"
+          echo "========================================"
+          echo
+
+          FAILED=0
+
+          fail() {
+            echo "::error::$1"
+            FAILED=1
+          }
+
+          pass() {
+            echo "PASS: $1"
+          }
+
+          echo "[1/6] Checking repository root..."
+
+          if [ ! -d ".git" ]; then
+            fail "Git repository metadata is missing."
+          else
+            pass "Git repository detected."
+          fi
+
+          echo
+          echo "[2/6] Checking required documentation..."
+
+          if [ ! -f "README.md" ]; then
+            fail "README.md is missing."
+          else
+            pass "README.md exists."
+          fi
+
+          echo
+          echo "[3/6] Checking Kupln repository identity..."
+
+          if [ -f "README.md" ]; then
+            if grep -qi "Kupln" README.md; then
+              pass "Kupln identity detected in README.md."
+            else
+              fail "README.md does not identify the Kupln project."
+            fi
+          fi
+
+          echo
+          echo "[4/6] Checking for accidental generated files..."
+
+          FORBIDDEN_FILES=(
+            "*.apk"
+            "*.aab"
+            "*.class"
+            "*.jar"
+            "*.exe"
+            "*.dll"
+            "*.so"
+            "*.o"
+            "*.obj"
+            "*.tmp"
+            "*.log"
+          )
+
+          for pattern in "${FORBIDDEN_FILES[@]}"; do
+            if find . \
+              -path "./.git" -prune -o \
+              -type f -name "$pattern" -print -quit | grep -q .; then
+              fail "Unexpected generated/binary file detected: $pattern"
+            fi
+          done
+
+          if [ "$FAILED" -eq 0 ]; then
+            pass "No forbidden generated artifacts detected."
+          fi
+
+          echo
+          echo "[5/6] Checking current foundation structure..."
+
+          if [ -d ".github/workflows" ]; then
+            pass "GitHub Actions workflow directory exists."
+          else
+            fail ".github/workflows directory is missing."
+          fi
+
+          if [ -f ".github/workflows/project-guard.yml" ]; then
+            pass "Project Guard workflow is present."
+          else
+            fail "Project Guard workflow is missing."
+          fi
+
+          echo
+          echo "[6/6] Final Guard decision..."
+          echo
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "========================================"
+            echo "        PROJECT GUARD: FAIL"
+            echo "========================================"
+            exit 1
+          fi
+
+          echo "========================================"
+          echo "        PROJECT GUARD: PASS"
+          echo "========================================"
+          echo
+          echo "Repository foundation is valid."
