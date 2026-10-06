@@ -54,6 +54,10 @@ Type System
 Intermediate Representation
     ↓
 Compiler / Backend
+
+The parser consumes tokens and determines whether they form a valid Kupln syntactic structure.
+The parser must not perform semantic analysis.
+
 The parser consumes tokens and determines whether they form a valid Kupln syntactic structure.
 The parser must not perform semantic analysis.
 3. Input to the Parser
