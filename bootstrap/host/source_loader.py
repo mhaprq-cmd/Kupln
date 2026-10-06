@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from source_model import SourceFile
+from .source_model import SourceFile
 
 
 KUPLN_SOURCE_EXTENSION = ".kpl"
@@ -101,4 +101,4 @@ def load_source(path: str | Path) -> SourceFile:
     return SourceFile(
         path=source_path.resolve(),
         content=content,
-            )
+    )
