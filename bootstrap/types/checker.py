@@ -243,6 +243,7 @@ class TypeChecker(
         self._type_infos[name] = info
 
         return info
+        
 def _function_type(
     self,
     declaration: StructDeclaration,
