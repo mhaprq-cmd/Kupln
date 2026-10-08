@@ -371,7 +371,7 @@ class ExpressionCheckerMixin:
             InvalidTypeOperationError,
         )
 
-        def _arithmetic_type(
+    def _arithmetic_type(
         self,
         expression: BinaryExpression,
         left_type: Type,
