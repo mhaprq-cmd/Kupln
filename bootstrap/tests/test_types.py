@@ -169,7 +169,7 @@ class TypeSystemTests(unittest.TestCase):
             INT,
         )
 
-    def test_float_addition_returns_float(self) -> None:
+     def test_mixed_numeric_addition_is_rejected(self) -> None:
         checker = TypeChecker()
 
         expression = BinaryExpression(
@@ -179,10 +179,8 @@ class TypeSystemTests(unittest.TestCase):
             right=literal("FLOAT", "2.5"),
         )
 
-        self.assertEqual(
-            checker._check_expression(expression),
-            FLOAT,
-        )
+        with self.assertRaises(InvalidTypeOperationError):
+            checker._check_expression(expression)
 
     def test_invalid_numeric_operation_is_rejected(self) -> None:
         checker = TypeChecker()
