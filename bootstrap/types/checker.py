@@ -334,10 +334,10 @@ class TypeChecker(
 
         interfaces: list[Type] = []
 
-        for parent_reference in declaration.extends:
-            interfaces.append(
-                self.resolve_type(parent_reference)
-            )
+if declaration.extends is not None:
+    interfaces.append(
+        self.resolve_type(declaration.extends)
+    )
 
         members: list[MemberInfo] = []
 
