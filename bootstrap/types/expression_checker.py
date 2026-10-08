@@ -142,7 +142,7 @@ class ExpressionCheckerMixin:
         name = expression.identifier.name
 
         try:
-            symbol = self._environment.lookup(name)
+            symbol = self._environment.resolve(name)
         except Exception:
             raise self._error_at(
                 expression.position,
@@ -156,7 +156,7 @@ class ExpressionCheckerMixin:
         expression: ThisExpression,
     ) -> Type:
         try:
-            return self._environment.lookup("this").type
+            return self._environment.resolve("this").type
         except Exception:
             raise self._error_at(
                 expression.position,
@@ -167,6 +167,13 @@ class ExpressionCheckerMixin:
         self,
         expression: SuperExpression,
     ) -> Type:
+        try:
+            return self._environment.resolve("super").type
+        except Exception:
+            raise self._error_at(
+                expression.position,
+                "'super' is not available in this context.",
+        )-> Type:
         try:
             return self._environment.lookup("super").type
         except Exception:
