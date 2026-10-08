@@ -173,7 +173,7 @@ class ExpressionCheckerMixin:
             raise self._error_at(
                 expression.position,
                 "'super' is not available in this context.",
-        )-> Type:
+        )
         try:
             return self._environment.lookup("super").type
         except Exception:
