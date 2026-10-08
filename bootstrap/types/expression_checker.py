@@ -371,7 +371,7 @@ class ExpressionCheckerMixin:
             InvalidTypeOperationError,
         )
 
-    def _arithmetic_type(
+        def _arithmetic_type(
         self,
         expression: BinaryExpression,
         left_type: Type,
@@ -380,7 +380,7 @@ class ExpressionCheckerMixin:
         operator = expression.operator
 
         if operator == "+" and (
-            left_type == STRING or right_type == STRING
+            left_type == STRING and right_type == STRING
         ):
             return STRING
 
@@ -394,10 +394,17 @@ class ExpressionCheckerMixin:
                 InvalidTypeOperationError,
             )
 
-        if left_type == FLOAT or right_type == FLOAT:
-            return FLOAT
+        if left_type != right_type:
+            raise self._error_at(
+                expression.position,
+                (
+                    f"Operator '{operator}' requires operands "
+                    "of the same numeric type."
+                ),
+                InvalidTypeOperationError,
+            )
 
-        return INT
+        return left_type
 
     def _null_coalescing_type(
         self,
