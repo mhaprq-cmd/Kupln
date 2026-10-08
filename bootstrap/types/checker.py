@@ -334,10 +334,10 @@ class TypeChecker(
 
         interfaces: list[Type] = []
 
-if declaration.extends is not None:
-    interfaces.append(
-        self.resolve_type(declaration.extends)
-    )
+              if declaration.extends is not None:
+            interfaces.append(
+                self.resolve_type(declaration.extends)
+            )
 
         members: list[MemberInfo] = []
 
