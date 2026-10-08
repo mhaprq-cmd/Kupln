@@ -243,20 +243,20 @@ class TypeChecker(
         self._type_infos[name] = info
 
         return info
-        
+
 def _function_type(
     self,
     declaration: StructDeclaration,
 ) -> TypeInfo:
     name = declaration.name.name
 
-        existing = self._type_infos.get(name)
-        if existing is not None:
-            return existing
+    existing = self._type_infos.get(name)
+    if existing is not None:
+        return existing
 
-        struct_type = named_type(
-            name,
-            TypeKind.STRUCT,
+    struct_type = named_type(
+        name,
+        TypeKind.STRUCT,
         )
 
         info = TypeInfo(type=struct_type)
