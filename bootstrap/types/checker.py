@@ -247,7 +247,7 @@ class TypeChecker(
     ) -> None:
         """Register top-level callable and type names."""
 
-        for item in compilation_unit.items:
+    for item in compilation_unit.items:
             declaration = item
 
             if hasattr(item, "declaration"):
