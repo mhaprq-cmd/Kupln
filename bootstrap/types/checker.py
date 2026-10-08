@@ -42,10 +42,8 @@ from bootstrap.types.expression_checker import (
 
 from bootstrap.types.type_system import (
     BUILTIN_TYPES,
-    FunctionType,
     Type,
     TypeKind,
-    function_type,
     named_type,
 )
 
@@ -54,7 +52,7 @@ class TypeChecker(
     DeclarationCheckerMixin,
     ExpressionCheckerMixin,
 ):
-    """Coordinate the Kupln bootstrap Type System checks."""
+    """Coordinate the Kupln Bootstrap Type System checks."""
 
     def __init__(
         self,
@@ -244,19 +242,19 @@ class TypeChecker(
 
         return info
 
-def _function_type(
-    self,
-    declaration: StructDeclaration,
-) -> TypeInfo:
-    name = declaration.name.name
+    def _register_struct_type(
+        self,
+        declaration: StructDeclaration,
+    ) -> TypeInfo:
+        name = declaration.name.name
 
-    existing = self._type_infos.get(name)
-    if existing is not None:
-        return existing
+        existing = self._type_infos.get(name)
+        if existing is not None:
+            return existing
 
-    struct_type = named_type(
-        name,
-        TypeKind.STRUCT,
+        struct_type = named_type(
+            name,
+            TypeKind.STRUCT,
         )
 
         info = TypeInfo(type=struct_type)
@@ -520,4 +518,4 @@ __all__ = [
     "InvalidIndexError",
     "MemberInfo",
     "TypeInfo",
-]
+    ]
