@@ -334,7 +334,7 @@ class TypeChecker(
 
         interfaces: list[Type] = []
 
-            if declaration.extends is not None:
+        if declaration.extends is not None:
             interfaces.append(
                 self.resolve_type(declaration.extends)
             )
