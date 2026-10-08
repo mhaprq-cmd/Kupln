@@ -248,7 +248,8 @@ class DeclarationCheckerMixin:
             self._current_function_return_type = previous_return_type
             self._current_function_async = previous_async
             self._environment = previous_environment
-              def _function_type(
+
+    def _function_type(
         self,
         declaration: FunctionDeclaration,
     ) -> FunctionType:
@@ -566,8 +567,9 @@ class DeclarationCheckerMixin:
         raise self._error_at(
             initializer.position,
             "Unsupported for-loop initializer.",
-)
-          def _check_try_statement(
+        )
+
+    def _check_try_statement(
         self,
         statement: TryStatement,
     ) -> None:
