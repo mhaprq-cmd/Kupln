@@ -1,666 +1,523 @@
-"""Kupln Bootstrap Declaration Type Checker.
+"""Kupln Bootstrap Type Checker.
 
-Declaration, statement, scope, and control-flow checking.
+Coordinator for declaration and expression type checking.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from bootstrap.parser.ast import (
-    Block,
     ClassDeclaration,
-    Declaration,
-    EmptyStatement,
+    CompilationUnit,
     ExportDeclaration,
-    ExpressionStatement,
     FieldDeclaration,
-    ForInitializer,
-    ForStatement,
     FunctionDeclaration,
-    IfStatement,
-    ImportDeclaration,
     InterfaceDeclaration,
     RecordDeclaration,
-    ReturnStatement,
-    Statement,
     StructDeclaration,
-    TryStatement,
-    VariableDeclaration,
-    WhileStatement,
+    TypeReference,
+)
+
+from bootstrap.types.declaration_checker import (
+    DeclarationCheckerMixin,
+    InvalidAssignmentError,
+    InvalidCallError,
+    InvalidIndexError,
+    InvalidMemberAccessError,
+    InvalidReturnError,
+    InvalidTypeOperationError,
+    MemberInfo,
+    TypeCheckError,
+    TypeInfo,
+    UnknownTypeError,
 )
 
 from bootstrap.types.environment import (
-    DuplicateDefinitionError,
     TypeEnvironment,
+    create_root_environment,
+)
+
+from bootstrap.types.expression_checker import (
+    ExpressionCheckerMixin,
 )
 
 from bootstrap.types.type_system import (
-    ANY,
-    BOOL,
-    VOID,
+    BUILTIN_TYPES,
     FunctionType,
     Type,
     TypeKind,
+    function_type,
+    named_type,
 )
 
 
-class TypeCheckError(Exception):
-    """Base class for bootstrap type-checking errors."""
+class TypeChecker(
+    DeclarationCheckerMixin,
+    ExpressionCheckerMixin,
+):
+    """Coordinate the Kupln bootstrap Type System checks."""
 
-
-class UnknownTypeError(TypeCheckError):
-    """Raised when a type cannot be resolved."""
-
-
-class InvalidTypeOperationError(TypeCheckError):
-    """Raised when an operation is invalid for a type."""
-
-
-class InvalidAssignmentError(TypeCheckError):
-    """Raised when an assignment is incompatible."""
-
-
-class InvalidCallError(TypeCheckError):
-    """Raised when a function call is invalid."""
-
-
-class InvalidReturnError(TypeCheckError):
-    """Raised when a return statement is invalid."""
-
-
-class InvalidMemberAccessError(TypeCheckError):
-    """Raised when member access is invalid."""
-
-
-class InvalidIndexError(TypeCheckError):
-    """Raised when indexing is invalid."""
-
-
-@dataclass(frozen=True)
-class MemberInfo:
-    """Information about a declared member."""
-
-    name: str
-    type: Type
-
-
-@dataclass(frozen=True)
-class TypeInfo:
-    """Information about a user-defined type."""
-
-    type: Type
-    members: tuple[MemberInfo, ...] = ()
-    extends: Type | None = None
-    interfaces: tuple[Type, ...] = ()
-
-
-class DeclarationCheckerMixin:
-    """Mixin containing declaration and statement checks."""
-
-    def _check_top_level_item(self, item) -> None:
-        if isinstance(item, ImportDeclaration):
-            return
-
-        if isinstance(item, ExportDeclaration):
-            self._check_declaration(item.declaration)
-            return
-
-        if isinstance(
-            item,
-            (
-                VariableDeclaration,
-                FunctionDeclaration,
-                ClassDeclaration,
-                InterfaceDeclaration,
-                StructDeclaration,
-                RecordDeclaration,
-            ),
-        ):
-            self._check_declaration(item)
-            return
-
-        self._check_statement(item)
-
-    def _check_declaration(self, declaration: Declaration) -> None:
-        if isinstance(declaration, VariableDeclaration):
-            self._check_variable_declaration(declaration)
-            return
-
-        if isinstance(declaration, FunctionDeclaration):
-            self._check_function_declaration(declaration)
-            return
-
-        if isinstance(declaration, ClassDeclaration):
-            self._check_class_declaration(declaration)
-            return
-
-        if isinstance(declaration, InterfaceDeclaration):
-            self._check_interface_declaration(declaration)
-            return
-
-        if isinstance(declaration, StructDeclaration):
-            self._check_struct_declaration(declaration)
-            return
-
-        if isinstance(declaration, RecordDeclaration):
-            self._check_record_declaration(declaration)
-            return
-
-        raise self._error_at(
-            declaration.position,
-            "Unsupported declaration.",
+    def __init__(
+        self,
+        environment: TypeEnvironment | None = None,
+    ) -> None:
+        self._environment = (
+            environment
+            if environment is not None
+            else create_root_environment()
         )
 
-    def _check_variable_declaration(
+        self._type_infos: dict[str, TypeInfo] = {}
+
+        self._current_function_return_type: Type | None = None
+        self._current_function_async = False
+
+        self._register_builtin_types()
+
+    @property
+    def environment(self) -> TypeEnvironment:
+        """Return the current type environment."""
+        return self._environment
+
+    @property
+    def type_infos(self) -> dict[str, TypeInfo]:
+        """Return registered user-defined type information."""
+        return self._type_infos
+
+    def _register_builtin_types(self) -> None:
+        """Register built-in language types in the root environment."""
+        for name, type_ in BUILTIN_TYPES.items():
+            if not self._environment.contains_local(name):
+                self._environment.define(name, type_)
+
+    def check(
         self,
-        declaration: VariableDeclaration,
+        compilation_unit: CompilationUnit,
     ) -> None:
-        variable_type = self._declared_or_inferred_variable_type(
+        """Type-check a complete compilation unit."""
+        self._register_declarations(compilation_unit)
+        self._register_top_level_symbols(compilation_unit)
+
+        for item in compilation_unit.items:
+            self._check_top_level_item(item)
+
+    def resolve_type(
+        self,
+        type_reference: TypeReference,
+    ) -> Type:
+        """Resolve a source-level type reference."""
+        if not type_reference.parts:
+            raise self._error_at(
+                type_reference.position,
+                "Empty type reference.",
+                UnknownTypeError,
+            )
+
+        if len(type_reference.parts) != 1:
+            raise self._error_at(
+                type_reference.position,
+                "Qualified type names are not supported yet.",
+                UnknownTypeError,
+            )
+
+        name = type_reference.parts[0].name
+
+        try:
+            symbol = self._environment.resolve(name)
+        except Exception:
+            raise self._error_at(
+                type_reference.position,
+                f"Unknown type '{name}'.",
+                UnknownTypeError,
+            )
+
+        type_ = symbol.type
+
+        if type_.kind in {
+            TypeKind.FUNCTION,
+            TypeKind.ARRAY,
+        }:
+            return type_
+
+        return type_
+
+    def _register_declarations(
+        self,
+        compilation_unit: CompilationUnit,
+    ) -> None:
+        """Register user-defined types before checking their bodies."""
+        for item in compilation_unit.items:
+            declaration = self._unwrap_export(item)
+
+            if isinstance(declaration, ClassDeclaration):
+                self._register_class_type(declaration)
+
+            elif isinstance(declaration, InterfaceDeclaration):
+                self._register_interface_type(declaration)
+
+            elif isinstance(declaration, StructDeclaration):
+                self._register_struct_type(declaration)
+
+            elif isinstance(declaration, RecordDeclaration):
+                self._register_record_type(declaration)
+
+    def _register_top_level_symbols(
+        self,
+        compilation_unit: CompilationUnit,
+    ) -> None:
+        """Register top-level functions and type names."""
+        for item in compilation_unit.items:
+            declaration = self._unwrap_export(item)
+
+            if isinstance(
+                declaration,
+                (
+                    ClassDeclaration,
+                    InterfaceDeclaration,
+                    StructDeclaration,
+                    RecordDeclaration,
+                ),
+            ):
+                info = self._type_infos.get(
+                    declaration.name.name
+                )
+
+                if info is not None:
+                    self._define_symbol_if_missing(
+                        declaration.name.name,
+                        info.type,
+                    )
+
+            elif isinstance(declaration, FunctionDeclaration):
+                function_type = self._function_type(
+                    declaration
+                )
+
+                self._define_symbol_if_missing(
+                    declaration.name.name,
+                    function_type,
+                )
+
+    def _unwrap_export(self, item):
+        """Return the declaration wrapped by an export, if any."""
+        if isinstance(item, ExportDeclaration):
+            return item.declaration
+
+        return item
+
+    def _register_class_type(
+        self,
+        declaration: ClassDeclaration,
+    ) -> TypeInfo:
+        name = declaration.name.name
+
+        existing = self._type_infos.get(name)
+        if existing is not None:
+            return existing
+
+        class_type = named_type(
+            name,
+            TypeKind.CLASS,
+        )
+
+        info = TypeInfo(type=class_type)
+        self._type_infos[name] = info
+
+        return info
+
+    def _register_interface_type(
+        self,
+        declaration: InterfaceDeclaration,
+    ) -> TypeInfo:
+        name = declaration.name.name
+
+        existing = self._type_infos.get(name)
+        if existing is not None:
+            return existing
+
+        interface_type = named_type(
+            name,
+            TypeKind.INTERFACE,
+        )
+
+        info = TypeInfo(type=interface_type)
+        self._type_infos[name] = info
+
+        return info
+
+    def _register_struct_type(
+        self,
+        declaration: StructDeclaration,
+    ) -> TypeInfo:
+        name = declaration.name.name
+
+        existing = self._type_infos.get(name)
+        if existing is not None:
+            return existing
+
+        struct_type = named_type(
+            name,
+            TypeKind.STRUCT,
+        )
+
+        info = TypeInfo(type=struct_type)
+        self._type_infos[name] = info
+
+        return info
+
+    def _register_record_type(
+        self,
+        declaration: RecordDeclaration,
+    ) -> TypeInfo:
+        name = declaration.name.name
+
+        existing = self._type_infos.get(name)
+        if existing is not None:
+            return existing
+
+        record_type = named_type(
+            name,
+            TypeKind.RECORD,
+        )
+
+        info = TypeInfo(type=record_type)
+        self._type_infos[name] = info
+
+        return info
+
+    def _define_symbol_if_missing(
+        self,
+        name: str,
+        type_: Type,
+    ) -> None:
+        if not self._environment.contains_local(name):
+            self._environment.define(name, type_)
+
+    def _complete_class_type(
+        self,
+        declaration: ClassDeclaration,
+    ) -> Type:
+        name = declaration.name.name
+
+        info = self._type_infos.get(name)
+        if info is None:
+            info = self._register_class_type(declaration)
+
+        extends = None
+
+        if declaration.extends is not None:
+            extends = self.resolve_type(
+                declaration.extends
+            )
+
+        interfaces: list[Type] = []
+
+        for interface_reference in declaration.implements:
+            interfaces.append(
+                self.resolve_type(interface_reference)
+            )
+
+        members = self._collect_class_members(
             declaration
         )
 
-        if declaration.initializer is not None:
-            initializer_type = self._check_expression(
-                declaration.initializer
-            )
-
-            if not self.is_assignable(
-                initializer_type,
-                variable_type,
-            ):
-                raise self._error_at(
-                    declaration.position,
-                    (
-                        f"Cannot assign value of type "
-                        f"'{initializer_type.name}' to variable "
-                        f"'{declaration.name.name}' of type "
-                        f"'{variable_type.name}'."
-                    ),
-                    InvalidAssignmentError,
-                )
-
-        self._define_symbol(
-            declaration.name.name,
-            variable_type,
-            declaration.position,
+        completed = TypeInfo(
+            type=info.type,
+            members=members,
+            extends=extends,
+            interfaces=tuple(interfaces),
         )
 
-    def _declared_or_inferred_variable_type(
-        self,
-        declaration: VariableDeclaration,
-    ) -> Type:
-        if declaration.type_annotation is not None:
-            return self.resolve_type(declaration.type_annotation)
+        self._type_infos[name] = completed
 
-        if declaration.initializer is None:
-            raise self._error_at(
-                declaration.position,
-                (
-                    f"Variable '{declaration.name.name}' requires "
-                    "a type annotation or initializer."
-                ),
-                InvalidTypeOperationError,
-            )
+        return completed.type
 
-        return self._check_expression(declaration.initializer)
-
-    def _check_function_declaration(
-        self,
-        declaration: FunctionDeclaration,
-    ) -> None:
-        function_type = self._function_type(declaration)
-
-        self._define_symbol(
-            declaration.name.name,
-            function_type,
-            declaration.position,
-        )
-
-        previous_environment = self._environment
-        function_environment = TypeEnvironment(previous_environment)
-        self._environment = function_environment
-
-        previous_return_type = self._current_function_return_type
-        previous_async = self._current_function_async
-
-        try:
-            for parameter, parameter_type in zip(
-                declaration.parameters,
-                function_type.parameter_types,
-            ):
-                self._define_symbol(
-                    parameter.name.name,
-                    parameter_type,
-                    parameter.position,
-                )
-
-            self._current_function_return_type = (
-                function_type.return_type
-            )
-            self._current_function_async = (
-                declaration.async_modifier
-            )
-
-            self._check_block_contents(declaration.body)
-
-        finally:
-            self._current_function_return_type = previous_return_type
-            self._current_function_async = previous_async
-            self._environment = previous_environment
-
-    def _function_type(
-        self,
-        declaration: FunctionDeclaration,
-    ) -> FunctionType:
-        parameter_types: list[Type] = []
-
-        for parameter in declaration.parameters:
-            if parameter.type_annotation is None:
-                raise self._error_at(
-                    parameter.position,
-                    (
-                        f"Parameter '{parameter.name.name}' "
-                        "requires a type annotation."
-                    ),
-                    UnknownTypeError,
-                )
-
-            parameter_types.append(
-                self.resolve_type(parameter.type_annotation)
-            )
-
-        if declaration.return_type is None:
-            return_type = VOID
-        else:
-            return_type = self.resolve_type(
-                declaration.return_type
-            )
-
-        return FunctionType(
-            parameter_types=tuple(parameter_types),
-            return_type=return_type,
-            async_function=declaration.async_modifier,
-        )
-
-    def _check_class_declaration(
-        self,
-        declaration: ClassDeclaration,
-    ) -> None:
-        class_type = self._complete_class_type(declaration)
-
-        previous_environment = self._environment
-        class_environment = TypeEnvironment(previous_environment)
-        self._environment = class_environment
-
-        try:
-            self._define_symbol(
-                "this",
-                class_type,
-                declaration.position,
-            )
-
-            if declaration.extends is not None:
-                parent_type = self.resolve_type(
-                    declaration.extends
-                )
-                self._define_symbol(
-                    "super",
-                    parent_type,
-                    declaration.position,
-                )
-
-            for member in declaration.members:
-                if isinstance(member, FieldDeclaration):
-                    self._check_field_declaration(member)
-                elif isinstance(member, FunctionDeclaration):
-                    self._check_function_declaration(member)
-                else:
-                    raise self._error_at(
-                        member.position,
-                        "Unsupported class member.",
-                    )
-        finally:
-            self._environment = previous_environment
-
-    def _check_interface_declaration(
+    def _complete_interface_type(
         self,
         declaration: InterfaceDeclaration,
-    ) -> None:
-        self._complete_interface_type(declaration)
+    ) -> Type:
+        name = declaration.name.name
 
-        previous_environment = self._environment
-        interface_environment = TypeEnvironment(previous_environment)
-        self._environment = interface_environment
+        info = self._type_infos.get(name)
+        if info is None:
+            info = self._register_interface_type(
+                declaration
+            )
 
-        try:
-            for member in declaration.members:
-                if isinstance(member, FunctionDeclaration):
-                    self._check_function_declaration(member)
-                else:
-                    raise self._error_at(
-                        member.position,
-                        "Unsupported interface member.",
+        interfaces: list[Type] = []
+
+        for parent_reference in declaration.extends:
+            interfaces.append(
+                self.resolve_type(parent_reference)
+            )
+
+        members: list[MemberInfo] = []
+
+        for member in declaration.members:
+            if isinstance(
+                member,
+                FunctionDeclaration,
+            ):
+                members.append(
+                    MemberInfo(
+                        name=member.name.name,
+                        type=self._function_type(member),
                     )
-        finally:
-            self._environment = previous_environment
+                )
 
-    def _check_struct_declaration(
+        completed = TypeInfo(
+            type=info.type,
+            members=tuple(members),
+            interfaces=tuple(interfaces),
+        )
+
+        self._type_infos[name] = completed
+
+        return completed.type
+
+    def _complete_struct_type(
         self,
         declaration: StructDeclaration,
-    ) -> None:
-        self._complete_struct_type(declaration)
+    ) -> Type:
+        name = declaration.name.name
 
-        previous_environment = self._environment
-        struct_environment = TypeEnvironment(previous_environment)
-        self._environment = struct_environment
+        info = self._type_infos.get(name)
+        if info is None:
+            info = self._register_struct_type(
+                declaration
+            )
 
-        try:
-            for field in declaration.fields:
-                self._check_field_declaration(field)
-        finally:
-            self._environment = previous_environment
+        members = tuple(
+            self._collect_field_members(
+                declaration.fields
+            )
+        )
 
-    def _check_record_declaration(
+        completed = TypeInfo(
+            type=info.type,
+            members=members,
+        )
+
+        self._type_infos[name] = completed
+
+        return completed.type
+
+    def _complete_record_type(
         self,
         declaration: RecordDeclaration,
-    ) -> None:
-        self._complete_record_type(declaration)
+    ) -> Type:
+        name = declaration.name.name
 
-        previous_environment = self._environment
-        record_environment = TypeEnvironment(previous_environment)
-        self._environment = record_environment
+        info = self._type_infos.get(name)
+        if info is None:
+            info = self._register_record_type(
+                declaration
+            )
 
-        try:
-            for field in declaration.fields:
-                self._check_field_declaration(field)
-        finally:
-            self._environment = previous_environment
+        members = tuple(
+            self._collect_field_members(
+                declaration.fields
+            )
+        )
 
-    def _check_field_declaration(
+        completed = TypeInfo(
+            type=info.type,
+            members=members,
+        )
+
+        self._type_infos[name] = completed
+
+        return completed.type
+
+    def _collect_class_members(
         self,
-        declaration: FieldDeclaration,
-    ) -> None:
-        if declaration.type_annotation is None:
-            if declaration.initializer is None:
-                raise self._error_at(
-                    declaration.position,
-                    (
-                        f"Field '{declaration.name.name}' requires "
-                        "a type annotation or initializer."
-                    ),
-                    InvalidTypeOperationError,
+        declaration: ClassDeclaration,
+    ) -> tuple[MemberInfo, ...]:
+        members: list[MemberInfo] = []
+
+        for member in declaration.members:
+            if isinstance(
+                member,
+                FieldDeclaration,
+            ):
+                members.append(
+                    self._field_member(member)
                 )
 
-            field_type = self._check_expression(
-                declaration.initializer
+            elif isinstance(
+                member,
+                FunctionDeclaration,
+            ):
+                members.append(
+                    MemberInfo(
+                        name=member.name.name,
+                        type=self._function_type(member),
+                    )
+                )
+
+        return tuple(members)
+
+    def _collect_field_members(
+        self,
+        fields,
+    ) -> list[MemberInfo]:
+        members: list[MemberInfo] = []
+
+        for field in fields:
+            members.append(
+                self._field_member(field)
             )
-        else:
+
+        return members
+
+    def _field_member(
+        self,
+        field: FieldDeclaration,
+    ) -> MemberInfo:
+        if field.type_annotation is not None:
             field_type = self.resolve_type(
-                declaration.type_annotation
+                field.type_annotation
             )
 
-            if declaration.initializer is not None:
-                initializer_type = self._check_expression(
-                    declaration.initializer
-                )
-
-                if not self.is_assignable(
-                    initializer_type,
-                    field_type,
-                ):
-                    raise self._error_at(
-                        declaration.position,
-                        (
-                            f"Cannot assign value of type "
-                            f"'{initializer_type.name}' to field "
-                            f"'{declaration.name.name}' of type "
-                            f"'{field_type.name}'."
-                        ),
-                        InvalidAssignmentError,
-                    )
-
-        self._define_symbol(
-            declaration.name.name,
-            field_type,
-            declaration.position,
-        )
-
-    def _check_block_contents(self, block: Block) -> None:
-        previous_environment = self._environment
-        block_environment = TypeEnvironment(previous_environment)
-        self._environment = block_environment
-
-        try:
-            for item in block.items:
-                if isinstance(
-                    item,
-                    (
-                        VariableDeclaration,
-                        FunctionDeclaration,
-                        ClassDeclaration,
-                        InterfaceDeclaration,
-                        StructDeclaration,
-                        RecordDeclaration,
-                    ),
-                ):
-                    self._check_declaration(item)
-                else:
-                    self._check_statement(item)
-        finally:
-            self._environment = previous_environment
-
-    def _check_statement(self, statement: Statement) -> None:
-        if isinstance(statement, Block):
-            self._check_block_contents(statement)
-            return
-
-        if isinstance(statement, VariableDeclaration):
-            self._check_variable_declaration(statement)
-            return
-
-        if isinstance(statement, ExpressionStatement):
-            self._check_expression(statement.expression)
-            return
-
-        if isinstance(statement, ReturnStatement):
-            self._check_return_statement(statement)
-            return
-
-        if isinstance(statement, IfStatement):
-            condition_type = self._check_expression(
-                statement.condition
+        elif field.initializer is not None:
+            field_type = self._check_expression(
+                field.initializer
             )
 
-            if condition_type != BOOL:
-                raise self._error_at(
-                    statement.condition.position,
-                    "If condition must have type 'Bool'.",
-                    InvalidTypeOperationError,
-                )
-
-            self._check_statement(statement.then_branch)
-
-            if statement.else_branch is not None:
-                self._check_statement(statement.else_branch)
-
-            return
-
-        if isinstance(statement, WhileStatement):
-            condition_type = self._check_expression(
-                statement.condition
-            )
-
-            if condition_type != BOOL:
-                raise self._error_at(
-                    statement.condition.position,
-                    "While condition must have type 'Bool'.",
-                    InvalidTypeOperationError,
-                )
-
-            self._check_statement(statement.body)
-            return
-
-        if isinstance(statement, ForStatement):
-            self._check_for_statement(statement)
-            return
-
-        if isinstance(statement, TryStatement):
-            self._check_try_statement(statement)
-            return
-
-        if isinstance(statement, EmptyStatement):
-            return
-
-        raise self._error_at(
-            statement.position,
-            "Unsupported statement.",
-        )
-
-    def _check_for_statement(
-        self,
-        statement: ForStatement,
-    ) -> None:
-        previous_environment = self._environment
-        for_environment = TypeEnvironment(previous_environment)
-        self._environment = for_environment
-
-        try:
-            if statement.initializer is not None:
-                self._check_for_initializer(
-                    statement.initializer
-                )
-
-            if statement.condition is not None:
-                condition_type = self._check_expression(
-                    statement.condition
-                )
-
-                if condition_type != BOOL:
-                    raise self._error_at(
-                        statement.condition.position,
-                        "For condition must have type 'Bool'.",
-                        InvalidTypeOperationError,
-                    )
-
-            if statement.update is not None:
-                self._check_expression(statement.update)
-
-            self._check_statement(statement.body)
-        finally:
-            self._environment = previous_environment
-
-    def _check_for_initializer(
-        self,
-        initializer: ForInitializer,
-    ) -> None:
-        if isinstance(initializer, VariableDeclaration):
-            self._check_variable_declaration(initializer)
-            return
-
-        if isinstance(initializer, ExpressionStatement):
-            self._check_expression(initializer.expression)
-            return
-
-        raise self._error_at(
-            initializer.position,
-            "Unsupported for-loop initializer.",
-        )
-
-    def _check_try_statement(
-        self,
-        statement: TryStatement,
-    ) -> None:
-        self._check_block_contents(statement.body)
-
-        previous_environment = self._environment
-        catch_environment = TypeEnvironment(previous_environment)
-        self._environment = catch_environment
-
-        try:
-            self._define_symbol(
-                statement.catch_name.name,
-                ANY,
-                statement.catch_name.position,
-            )
-            self._check_block_contents(statement.catch_body)
-        finally:
-            self._environment = previous_environment
-
-    def _check_return_statement(
-        self,
-        statement: ReturnStatement,
-    ) -> None:
-        return_type = self._current_function_return_type
-
-        if return_type is None:
+        else:
             raise self._error_at(
-                statement.position,
-                "Return statement is only valid inside a function.",
-                InvalidReturnError,
-            )
-
-        if statement.expression is None:
-            if return_type.kind != TypeKind.VOID:
-                raise self._error_at(
-                    statement.position,
-                    (
-                        f"Expected return value of type "
-                        f"'{return_type.name}'."
-                    ),
-                    InvalidReturnError,
-                )
-            return
-
-        expression_type = self._check_expression(
-            statement.expression
-        )
-
-        if return_type.kind == TypeKind.VOID:
-            raise self._error_at(
-                statement.position,
-                "Void functions cannot return a value.",
-                InvalidReturnError,
-            )
-
-        if not self.is_assignable(
-            expression_type,
-            return_type,
-        ):
-            raise self._error_at(
-                statement.position,
+                field.position,
                 (
-                    f"Cannot return value of type "
-                    f"'{expression_type.name}' from function "
-                    f"returning '{return_type.name}'."
+                    f"Field '{field.name.name}' requires "
+                    "a type annotation or initializer."
                 ),
-                InvalidReturnError,
+                UnknownTypeError,
             )
 
-    def _define_symbol(
-        self,
-        name: str,
-        symbol_type: Type,
-        position,
-    ) -> None:
-        try:
-            self._environment.define(name, symbol_type)
-        except DuplicateDefinitionError:
-            raise self._error_at(
-                position,
-                f"Duplicate definition of '{name}'.",
-                InvalidTypeOperationError,
-            )
-
-    def _error_at(
-        self,
-        position,
-        message: str,
-        error_type: type[TypeCheckError] = TypeCheckError,
-    ) -> TypeCheckError:
-        location = (
-            f" at line {position.line}, "
-            f"column {position.column}"
+        return MemberInfo(
+            name=field.name.name,
+            type=field_type,
         )
 
-        return error_type(message + location)
+
+def check_compilation_unit(
+    compilation_unit: CompilationUnit,
+) -> None:
+    """Type-check a compilation unit using a fresh checker."""
+    checker = TypeChecker()
+    checker.check(compilation_unit)
+
+
+__all__ = [
+    "TypeChecker",
+    "check_compilation_unit",
+    "TypeCheckError",
+    "UnknownTypeError",
+    "InvalidTypeOperationError",
+    "InvalidAssignmentError",
+    "InvalidCallError",
+    "InvalidReturnError",
+    "InvalidMemberAccessError",
+    "InvalidIndexError",
+    "MemberInfo",
+    "TypeInfo",
+]
