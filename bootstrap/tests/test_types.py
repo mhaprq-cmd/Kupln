@@ -169,7 +169,7 @@ class TypeSystemTests(unittest.TestCase):
             INT,
         )
 
-     def test_mixed_numeric_addition_is_rejected(self) -> None:
+  def test_mixed_numeric_addition_is_rejected(self) -> None:
         checker = TypeChecker()
 
         expression = BinaryExpression(
