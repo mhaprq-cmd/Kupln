@@ -431,7 +431,7 @@ class ExpressionCheckerMixin:
             return common
 
         return left_type
-            def _assignment_type(
+    def _assignment_type(
         self,
         expression: AssignmentExpression,
     ) -> Type:
