@@ -332,7 +332,7 @@ class DeclarationCheckerMixin:
         previous_environment = self._environment
         interface_environment = TypeEnvironment(previous_environment)
         self._environment = interface_environment
-            try:
+       try:
             for member in declaration.members:
                 if isinstance(member, FunctionDeclaration):
                     self._check_function_declaration(member)
