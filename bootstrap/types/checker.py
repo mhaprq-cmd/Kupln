@@ -185,15 +185,6 @@ class TypeChecker(
                         info.type,
                     )
 
-            elif isinstance(declaration, FunctionDeclaration):
-                function_type = self._function_type(
-                    declaration
-                )
-
-                self._define_symbol_if_missing(
-                    declaration.name.name,
-                    function_type,
-                )
 
     def _unwrap_export(self, item):
         """Return the declaration wrapped by an export, if any."""
