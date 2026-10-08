@@ -24,6 +24,14 @@ from bootstrap.parser.ast import (
     UnaryExpression,
 )
 
+from bootstrap.types.declaration_checker import (
+    InvalidAssignmentError,
+    InvalidCallError,
+    InvalidIndexError,
+    InvalidMemberAccessError,
+    InvalidTypeOperationError,
+)
+
 from bootstrap.types.type_system import (
     ANY,
     BOOL,
@@ -32,18 +40,15 @@ from bootstrap.types.type_system import (
     INT,
     NULL,
     STRING,
-    VOID,
     ArrayType,
     FunctionType,
     NamedType,
     Type,
     TypeKind,
     array_type,
-    function_type,
     is_boolean,
     is_nullable,
     is_numeric,
-    named_type,
 )
 
 
@@ -386,7 +391,8 @@ class ExpressionCheckerMixin:
             return FLOAT
 
         return INT
-          def _null_coalescing_type(
+
+    def _null_coalescing_type(
         self,
         expression: BinaryExpression,
         left_type: Type,
@@ -425,8 +431,7 @@ class ExpressionCheckerMixin:
             return common
 
         return left_type
-
-    def _assignment_type(
+            def _assignment_type(
         self,
         expression: AssignmentExpression,
     ) -> Type:
@@ -670,8 +675,9 @@ class ExpressionCheckerMixin:
             expression.position,
             "Expression is not an assignable target.",
             InvalidAssignmentError,
-          )
-         def is_assignable(
+        )
+
+    def is_assignable(
         self,
         source: Type,
         target: Type,
@@ -860,4 +866,4 @@ class ExpressionCheckerMixin:
         return MemberInfo(
             name=name,
             type=member_type,
-  ) 
+        )
