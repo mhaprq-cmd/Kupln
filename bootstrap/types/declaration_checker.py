@@ -277,11 +277,11 @@ class DeclarationCheckerMixin:
                 declaration.return_type
             )
 
-            return FunctionType(
+        return FunctionType(
             parameter_types=tuple(parameter_types),
             return_type=return_type,
             async_function=declaration.async_modifier,
-            )
+        )
 
     def _check_class_declaration(
         self,
@@ -332,8 +332,7 @@ class DeclarationCheckerMixin:
         previous_environment = self._environment
         interface_environment = TypeEnvironment(previous_environment)
         self._environment = interface_environment
-
-        try:
+                try:
             for member in declaration.members:
                 if isinstance(member, FunctionDeclaration):
                     self._check_function_declaration(member)
