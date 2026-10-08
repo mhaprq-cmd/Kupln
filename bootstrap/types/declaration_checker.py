@@ -277,11 +277,11 @@ class DeclarationCheckerMixin:
                 declaration.return_type
             )
 
-                  return FunctionType(
+            return FunctionType(
             parameter_types=tuple(parameter_types),
             return_type=return_type,
             async_function=declaration.async_modifier,
-                                  )
+            )
 
     def _check_class_declaration(
         self,
