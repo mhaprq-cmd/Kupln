@@ -14,6 +14,8 @@ from bootstrap.parser.ast import (
     Identifier,
     InterfaceDeclaration,
     Parameter,
+    RecordDeclaration,
+    StructDeclaration,
     TypeReference,
 )
 from bootstrap.semantic.analyzer import (
@@ -23,6 +25,13 @@ from bootstrap.semantic.analyzer import (
 
 
 POSITION = SourcePosition(line=1, column=1, offset=0)
+
+TYPE_KINDS = (
+    "class",
+    "interface",
+    "struct",
+    "record",
+)
 
 
 def identifier(name: str) -> Identifier:
@@ -76,7 +85,9 @@ def class_declaration(
         modifiers=(),
         name=identifier(name),
         extends=type_reference(parent) if parent else None,
-        implements=tuple(type_reference(item) for item in implements),
+        implements=tuple(
+            type_reference(item) for item in implements
+        ),
         members=members,
     )
 
@@ -95,8 +106,55 @@ def interface_declaration(
     )
 
 
+def struct_declaration(name: str) -> StructDeclaration:
+    return StructDeclaration(
+        position=POSITION,
+        modifiers=(),
+        name=identifier(name),
+        fields=(),
+    )
+
+
+def record_declaration(name: str) -> RecordDeclaration:
+    return RecordDeclaration(
+        position=POSITION,
+        modifiers=(),
+        name=identifier(name),
+        fields=(),
+    )
+
+
+def type_declaration(kind: str, name: str):
+    """Create a declaration of the requested user-defined type kind."""
+    declarations = {
+        "class": class_declaration,
+        "interface": interface_declaration,
+        "struct": struct_declaration,
+        "record": record_declaration,
+    }
+
+    try:
+        factory = declarations[kind]
+    except KeyError:
+        raise ValueError(
+            f"Unsupported type declaration kind: {kind}"
+        ) from None
+
+    return factory(name)
+
+
+def export_declaration(declaration) -> ExportDeclaration:
+    return ExportDeclaration(
+        position=POSITION,
+        declaration=declaration,
+    )
+
+
 def compilation_unit(*items) -> CompilationUnit:
-    return CompilationUnit(position=POSITION, items=tuple(items))
+    return CompilationUnit(
+        position=POSITION,
+        items=tuple(items),
+    )
 
 
 class SemanticAnalyzerTests(unittest.TestCase):
@@ -122,14 +180,19 @@ class SemanticAnalyzerTests(unittest.TestCase):
             class_declaration("Beta", "Alpha"),
         )
 
-        with self.assertRaises(SemanticAnalysisError) as context:
+        with self.assertRaises(
+            SemanticAnalysisError
+        ) as context:
             analyze_compilation_unit(unit)
 
         self.assertIn(
             "Inheritance cycle detected",
             str(context.exception),
         )
-        self.assertEqual(context.exception.position, POSITION)
+        self.assertEqual(
+            context.exception.position,
+            POSITION,
+        )
 
     def test_interface_inheritance_cycle_is_rejected(self) -> None:
         unit = compilation_unit(
@@ -141,9 +204,8 @@ class SemanticAnalyzerTests(unittest.TestCase):
             analyze_compilation_unit(unit)
 
     def test_exported_class_is_included(self) -> None:
-        exported = ExportDeclaration(
-            position=POSITION,
-            declaration=class_declaration("Alpha", "Beta"),
+        exported = export_declaration(
+            class_declaration("Alpha", "Beta")
         )
 
         unit = compilation_unit(
@@ -168,6 +230,126 @@ class SemanticAnalyzerTests(unittest.TestCase):
         ):
             analyze_compilation_unit(unit)
 
+    def test_duplicate_names_within_each_type_kind_are_rejected(
+        self,
+    ) -> None:
+        for kind in TYPE_KINDS:
+            with self.subTest(kind=kind):
+                unit = compilation_unit(
+                    type_declaration(kind, "Shared"),
+                    type_declaration(kind, "Shared"),
+                )
+
+                with self.assertRaisesRegex(
+                    SemanticAnalysisError,
+                    "Duplicate type name 'Shared'",
+                ):
+                    analyze_compilation_unit(unit)
+
+    def test_duplicate_names_across_all_type_kind_combinations_are_rejected(
+        self,
+    ) -> None:
+        for first_kind in TYPE_KINDS:
+            for second_kind in TYPE_KINDS:
+                with self.subTest(
+                    first_kind=first_kind,
+                    second_kind=second_kind,
+                ):
+                    unit = compilation_unit(
+                        type_declaration(
+                            first_kind,
+                            "Shared",
+                        ),
+                        type_declaration(
+                            second_kind,
+                            "Shared",
+                        ),
+                    )
+
+                    with self.assertRaisesRegex(
+                        SemanticAnalysisError,
+                        "Duplicate type name 'Shared'",
+                    ):
+                        analyze_compilation_unit(unit)
+
+    def test_duplicate_names_are_rejected_with_export_wrapping(
+        self,
+    ) -> None:
+        for first_kind in TYPE_KINDS:
+            for second_kind in TYPE_KINDS:
+                for export_first in (False, True):
+                    for export_second in (False, True):
+                        with self.subTest(
+                            first_kind=first_kind,
+                            second_kind=second_kind,
+                            export_first=export_first,
+                            export_second=export_second,
+                        ):
+                            first = type_declaration(
+                                first_kind,
+                                "Shared",
+                            )
+                            second = type_declaration(
+                                second_kind,
+                                "Shared",
+                            )
+
+                            if export_first:
+                                first = export_declaration(first)
+
+                            if export_second:
+                                second = export_declaration(second)
+
+                            unit = compilation_unit(
+                                first,
+                                second,
+                            )
+
+                            with self.assertRaisesRegex(
+                                SemanticAnalysisError,
+                                "Duplicate type name 'Shared'",
+                            ):
+                                analyze_compilation_unit(unit)
+
+    def test_duplicate_type_error_includes_conflicting_kinds(
+        self,
+    ) -> None:
+        unit = compilation_unit(
+            class_declaration("Shared"),
+            interface_declaration("Shared"),
+        )
+
+        with self.assertRaises(
+            SemanticAnalysisError
+        ) as context:
+            analyze_compilation_unit(unit)
+
+        message = str(context.exception)
+
+        self.assertIn("Duplicate type name 'Shared'", message)
+        self.assertIn("Interface", message)
+        self.assertIn("Class", message)
+
+    def test_duplicate_type_error_includes_source_position(
+        self,
+    ) -> None:
+        unit = compilation_unit(
+            class_declaration("Shared"),
+            record_declaration("Shared"),
+        )
+
+        with self.assertRaises(
+            SemanticAnalysisError
+        ) as context:
+            analyze_compilation_unit(unit)
+
+        self.assertEqual(
+            context.exception.position,
+            POSITION,
+        )
+        self.assertIn("line 1", str(context.exception))
+        self.assertIn("column 1", str(context.exception))
+
     def test_class_cannot_extend_interface(self) -> None:
         unit = compilation_unit(
             interface_declaration("Contract"),
@@ -183,7 +365,10 @@ class SemanticAnalyzerTests(unittest.TestCase):
     def test_class_cannot_implement_class(self) -> None:
         unit = compilation_unit(
             class_declaration("Concrete"),
-            class_declaration("Consumer", implements=("Concrete",)),
+            class_declaration(
+                "Consumer",
+                implements=("Concrete",),
+            ),
         )
 
         with self.assertRaisesRegex(
@@ -207,12 +392,17 @@ class SemanticAnalyzerTests(unittest.TestCase):
     def test_class_satisfies_interface_contract(self) -> None:
         required = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="String",
         )
+
         implementation = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="String",
         )
 
@@ -238,7 +428,10 @@ class SemanticAnalyzerTests(unittest.TestCase):
                 "Readable",
                 members=(required,),
             ),
-            class_declaration("Reader", implements=("Readable",)),
+            class_declaration(
+                "Reader",
+                implements=("Readable",),
+            ),
         )
 
         with self.assertRaisesRegex(
@@ -252,12 +445,17 @@ class SemanticAnalyzerTests(unittest.TestCase):
     ) -> None:
         required = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="String",
         )
+
         implementation = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="Int",
         )
 
@@ -287,7 +485,10 @@ class SemanticAnalyzerTests(unittest.TestCase):
                 "Readable",
                 members=(required,),
             ),
-            interface_declaration("AdvancedReadable", "Readable"),
+            interface_declaration(
+                "AdvancedReadable",
+                "Readable",
+            ),
             class_declaration(
                 "Reader",
                 implements=("AdvancedReadable",),
@@ -305,12 +506,17 @@ class SemanticAnalyzerTests(unittest.TestCase):
     ) -> None:
         required = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="String",
         )
+
         inherited = function_declaration(
             "read",
-            parameters=(parameter("count", "Int"),),
+            parameters=(
+                parameter("count", "Int"),
+            ),
             return_type="String",
         )
 
@@ -320,7 +526,10 @@ class SemanticAnalyzerTests(unittest.TestCase):
                     "Readable",
                     members=(required,),
                 ),
-                class_declaration("Base", members=(inherited,)),
+                class_declaration(
+                    "Base",
+                    members=(inherited,),
+                ),
                 class_declaration(
                     "Reader",
                     parent="Base",
