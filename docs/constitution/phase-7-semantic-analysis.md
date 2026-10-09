@@ -1,206 +1,295 @@
-Kupln Phase 7 — Semantic Analysis
+# Phase 7 — Semantic Analysis
 
-Status
+## 1. Phase Overview
 
-Implementation and integration are in place. Final verification of the expanded duplicate-type-name regression tests is pending.
+Phase 7 introduces semantic analysis into the Kupln bootstrap compiler.
 
-Phase 7 must not be considered fully verified against the latest changes until the updated semantic tests and the existing bootstrap tests pass, and Project Guard succeeds without weakening existing protections.
+The purpose of this phase is to validate semantic rules that cannot be
+fully enforced by lexical analysis or syntax parsing alone.
 
-Objective
+Semantic analysis operates after parsing and before later compilation
+stages that depend on validated program structure.
 
-Implement the semantic-analysis stage of the Kupln bootstrap compiler so that parsed programs can be checked for semantic correctness beyond lexical and syntactic validity.
+This phase builds on the existing lexer, parser, type-related
+infrastructure, and compilation pipeline.
 
-Semantic analysis operates on the parsed Abstract Syntax Tree (AST) and provides a foundation for subsequent compiler stages.
+## 2. Objectives
 
-Implementation
+The objectives of Phase 7 are:
 
-The principal files involved in this phase are:
+- Integrate semantic analysis into the compiler pipeline.
+- Detect duplicate type declarations within the applicable scope.
+- Validate supported type declaration structures.
+- Report semantic errors through a consistent error mechanism.
+- Preserve the separation between parsing and semantic validation.
+- Provide regression tests for semantic rules.
+- Verify that semantic failures propagate through the full pipeline.
+- Establish a foundation for future compiler phases.
 
-- "bootstrap/semantic/analyzer.py"
-- "bootstrap/tests/test_semantic.py"
-- "bootstrap/pipeline.py"
-- "docs/specification/types.md"
+## 3. Scope
 
-The implementation must remain consistent with the language features represented by the current AST and the semantic rules defined by the Kupln specifications.
+This phase focuses on semantic analysis supported by the current
+Kupln bootstrap implementation.
 
-Semantic Analyzer
+The scope includes:
 
-The semantic analyzer checks language-level constraints that cannot be fully validated by the lexer or parser.
+- Semantic analyzer implementation.
+- Type declaration name validation.
+- Duplicate declaration detection.
+- Integration with the compilation pipeline.
+- Unit tests for semantic analysis.
+- Pipeline-level regression tests.
+- Documentation of implemented behavior.
 
-Its responsibilities include detecting duplicate type names within the applicable scope and reporting semantic errors with useful diagnostic information.
+This phase does not claim that every future Kupln semantic rule
+has already been implemented.
 
-The analyzer must operate on the compilation unit and preserve compatibility with the existing bootstrap compiler architecture.
+## 4. Compiler Pipeline Integration
 
-Shared Type-Name Namespace
+Semantic analysis is integrated into the existing compilation flow.
 
-The following declaration kinds share one type-name namespace within the same applicable scope:
+The intended high-level sequence is:
 
-- "class"
-- "interface"
-- "struct"
-- "record"
+1. Receive Kupln source code.
+2. Perform lexical analysis.
+3. Parse the source into the supported syntax representation.
+4. Run semantic analysis.
+5. Continue only when the preceding stages succeed.
 
-A type name must be unique across all four declaration kinds within that scope.
+Semantic errors must prevent the pipeline from treating an invalid
+program as semantically valid.
 
-For example, the following declarations must be rejected because they define the same type name more than once:
+The implementation uses the existing pipeline infrastructure rather
+than introducing an unrelated compilation path.
 
-class Account {}
-interface Account {}
+## 5. Type Declaration Names
 
-The same restriction applies to duplicate declarations of the same kind:
+The current duplicate-name rule applies to the following declaration
+categories:
 
-struct Account {}
-struct Account {}
+- `class`
+- `interface`
+- `struct`
+- `record`
 
-It also applies across different declaration kinds, including:
+These declaration categories share one type-name namespace within
+the current applicable scope.
 
-record Account {}
-class Account {}
+A declaration must not reuse a name already declared by another
+type declaration in that scope.
 
-Export Does Not Bypass Uniqueness
+The rule applies even when the declarations use different categories.
 
-Wrapping a declaration in "export" does not create a separate type-name namespace and does not exempt the declaration from duplicate-name validation.
+For example, declaring a class and an interface with the same name
+must be rejected.
 
-The semantic analyzer must reject conflicting type names regardless of whether neither, one, or both declarations are wrapped in "export".
+## 6. Exported Declarations
 
-For example, this must be rejected:
+The duplicate-name rule also applies when a declaration uses `export`.
 
-class Account {}
-export interface Account {}
+Exporting a declaration does not make a duplicate type name valid
+within the same applicable scope.
 
-The same rule applies when both declarations are exported.
+For example, the following source must produce a semantic error:
 
-Scope Boundaries
+```kupln
+export class Shared {}
+record Shared {}
+```
 
-The uniqueness rule applies within the same applicable scope.
+The semantic analyzer must detect the conflict instead of accepting
+both declarations as distinct valid type names.
 
-Supporting independent namespaces or modules that permit identical type names in different scopes is deferred until Kupln has an implemented and specified namespace/module system.
+## 7. Duplicate Declaration Example
 
-The implementation must not assume that this future functionality already exists.
+The following source demonstrates a conflict between declaration
+categories:
 
-Diagnostics
+```kupln
+class Shared {}
+interface Shared {}
+```
 
-When a duplicate type name is detected, the semantic analyzer must raise "SemanticAnalysisError".
+The declarations reuse the same type name.
 
-The diagnostic should:
+The program must be rejected by semantic analysis.
 
-- Identify the duplicated type name.
-- Identify the conflicting declaration kinds when available.
-- Report the source position of the conflicting declaration.
-- Remain consistent with the existing semantic-error reporting conventions.
+This rule prevents ambiguous type declarations and provides a
+consistent foundation for later compiler stages.
 
-Pipeline Integration
+## 8. Scope Boundaries
 
-The existing compilation pipeline in "bootstrap/pipeline.py" connects type checking and semantic analysis through the compilation-unit analysis flow.
+The rules documented here apply to the scope supported by the current
+implementation.
 
-The relevant entry points include:
+Separate namespaces and module-level name resolution remain future
+work unless explicitly implemented and tested in a later phase.
 
-- "analyze_compilation_unit()"
-- "analyze_source()"
+This phase must not be interpreted as completing the entire Kupln
+namespace or module system.
 
-Type checking and semantic analysis must retain distinct responsibilities while working together as part of the compilation process.
+## 9. Error Handling
 
-Duplicate-type-name validation must not be bypassed when the program is processed through the normal compilation pipeline.
+Semantic validation failures must be represented as semantic errors.
 
-If the existing type checker registers duplicate declarations before semantic analysis runs, its behavior must be reviewed to ensure that registration does not prevent the semantic analyzer from detecting and reporting the duplicate.
+The compilation pipeline must propagate these errors to its caller.
 
-Any change to the type checker must be supported by a failing regression test demonstrating the need for that change.
+A semantic failure must not be silently ignored or converted into
+successful compilation.
 
-Tests
+Tests should verify both the detection of invalid declarations and
+the behavior of the integrated pipeline.
 
-Semantic-analysis tests are maintained in:
+## 10. Implementation Files
 
-"bootstrap/tests/test_semantic.py"
+The current implementation is organized across the following files:
 
-The test suite must preserve existing semantic-analysis coverage and verify the shared type-name namespace rule.
+- `bootstrap/semantic/analyzer.py`
+- `bootstrap/pipeline.py`
+- `bootstrap/types/checker.py`
 
-At minimum, the tests must cover:
+These files provide the semantic analyzer, its pipeline integration,
+and the existing type-checking infrastructure.
 
-1. Duplicate "class" declarations.
-2. Duplicate "interface" declarations.
-3. Duplicate "struct" declarations.
-4. Duplicate "record" declarations.
-5. Duplicate names across different declaration kinds.
-6. Duplicate names when the first declaration is exported.
-7. Duplicate names when the second declaration is exported.
-8. Duplicate names when both declarations are exported.
-9. Error diagnostics identifying the duplicated name and conflicting declaration kinds.
-10. Useful source-position information in duplicate-name diagnostics.
-11. Existing inheritance, interface-contract, and other semantic-analysis behavior.
-12. The normal compilation pipeline, to ensure duplicate-name errors are not bypassed.
+The following test files cover the relevant behavior:
 
-The tests must verify the actual behavior of the implementation rather than merely checking that helper functions or internal methods exist.
+- `bootstrap/tests/test_semantic.py`
+- `bootstrap/tests/test_pipeline.py`
 
-Tests for duplicate names must not replace or remove unrelated existing regression tests.
+The files should remain consistent with the actual implementation.
+New behavior must be accompanied by appropriate regression tests.
 
-Verification
+## 11. Semantic Analysis Tests
 
-The previously reported GitHub Actions workflow run was successful:
+The semantic test suite covers supported semantic validation behavior.
 
-https://github.com/mhaprq-cmd/Kupln/actions/runs/37994370129
+Relevant tests should ensure that duplicate type declarations are
+rejected when they reuse a name within the same applicable scope.
 
-That run reported successful results for:
+The duplicate-name rule must not depend solely on whether the
+declarations share the same declaration category.
 
-- Project Guard
-- Bootstrap Tests
+Tests should also cover declarations that use `export`.
 
-However, a successful run that predates the latest test-file changes does not verify those new changes.
+## 12. Pipeline Regression Tests
 
-After the updated test file and this document are committed, GitHub Actions must run again. The latest run must confirm that:
+The pipeline test suite includes regression coverage for duplicate
+type names.
 
-- Project Guard passes.
-- The expanded semantic-analysis tests pass.
-- Existing bootstrap tests pass.
-- No unrelated protections or tests have been weakened or removed.
+The following cases are covered by the added tests:
 
-The final verification status must be based on the actual latest workflow result.
+- A class and an interface declared with the same name.
+- An exported class and a record declared with the same name.
+- Rejection through the full `analyze_source()` pipeline.
 
-Scope Boundaries
+These tests help verify that semantic validation is connected to the
+actual compilation path, rather than working only when the analyzer
+is invoked independently.
 
-Phase 7 covers semantic analysis and its integration with the existing bootstrap pipeline.
+## 13. Regression Requirements
 
-It does not claim completion of:
+Future changes must preserve the duplicate-name behavior described
+in this document.
 
-- Intermediate Representation (IR).
-- Code generation or machine-code generation.
-- Native compilation backends.
-- Runtime implementation.
-- Standard Library or SDK implementation.
-- Compiler self-hosting.
-- Optimization passes.
-- A complete namespace or module system.
+At minimum, regression testing should ensure that:
 
-These capabilities remain outside the scope of Phase 7 unless separately specified and implemented.
+- Duplicate type names are rejected.
+- Different type declaration categories share the applicable
+  type-name namespace.
+- The `export` modifier does not bypass duplicate-name validation.
+- Semantic errors propagate through the compilation pipeline.
+- Existing supported compiler behavior remains intact.
 
-Acceptance Criteria
+Any changes to these rules must be reflected in both implementation
+and tests.
 
-Phase 7 may be considered fully verified only when all of the following conditions are satisfied:
+## 14. Dependencies
 
-1. The semantic analyzer exists at "bootstrap/semantic/analyzer.py".
-2. Semantic-analysis tests exist at "bootstrap/tests/test_semantic.py".
-3. The analyzer is integrated into the existing compilation pipeline.
-4. The four supported declaration kinds share the specified type-name namespace.
-5. Duplicate type names are rejected regardless of declaration kind or "export" wrapping.
-6. Duplicate-name diagnostics provide useful information.
-7. The normal compilation pipeline does not bypass duplicate-name validation.
-8. Existing semantic-analysis behavior remains covered by regression tests.
-9. All relevant bootstrap tests pass.
-10. Project Guard passes without weakening existing protections.
-11. The latest GitHub Actions run succeeds after the final changes.
-12. This document accurately reflects the implementation, tests, and verification available in the repository.
+This phase uses the existing Kupln bootstrap infrastructure.
 
-Maintenance Rule
+It does not require introducing a separate compiler framework merely
+to perform the documented semantic checks.
 
-Whenever the implementation, tests, or CI status changes, update this document to reflect the actual repository state.
+Future dependencies must be justified by a concrete implementation
+requirement.
 
-Do not claim that a semantic rule, test case, or feature is implemented unless the source code and tests support that claim.
+## 15. Limitations
 
-Do not mark the phase fully verified based only on an older successful workflow run when newer changes have not yet been tested.
+Phase 7 does not claim to complete every aspect of semantic analysis.
 
-Completion Summary
+Advanced name resolution, separate namespace systems, module
+visibility, overload resolution, and additional type rules may require
+future implementation and dedicated tests.
 
-Phase 7 establishes the semantic-analysis stage of the Kupln bootstrap compiler and integrates it into the existing compilation pipeline.
+Their availability must be determined from the actual source code,
+not inferred from the existence of the semantic analyzer.
 
-The shared type-name namespace rule ensures that "class", "interface", "struct", and "record" declarations cannot define duplicate names within the same applicable scope. The rule remains effective when declarations are wrapped in "export".
+## 16. Verification Status
 
-Completion requires passing regression tests, successful integration with the normal compilation pipeline, and a successful GitHub Actions run covering the final changes.
+The duplicate-type-name regression tests were added to the pipeline
+test suite.
+
+The repository owner reported that the file was updated and that
+GitHub testing succeeded afterward.
+
+This documentation records that report without making an independent
+claim about a specific workflow run.
+
+Workflow run numbers alone must not be treated as proof that a
+particular revision passed all required checks.
+
+## 17. Acceptance Criteria
+
+Phase 7 is considered implemented for its documented scope when:
+
+- Semantic analysis is connected to the compilation pipeline.
+- Duplicate type names are detected across the supported declaration
+  categories.
+- Exported declarations cannot bypass duplicate-name validation.
+- Semantic failures are propagated through the pipeline.
+- Relevant unit and integration regression tests are present.
+- The documentation accurately describes the implementation.
+- No unsupported future functionality is presented as completed.
+
+## 18. Completion Boundary
+
+The completion of this phase applies only to the functionality
+documented above and implemented in the repository.
+
+It does not mean that Kupln has a complete production compiler.
+
+Further semantic capabilities may be introduced incrementally as
+the language specification and compiler architecture evolve.
+
+## 19. Next Phase
+
+The next planned phase is:
+
+**Phase 8 — Intermediate Representation (IR)**
+
+Phase 8 should establish an explicit intermediate representation
+that later compiler stages can consume.
+
+Its design should be based on the actual syntax and semantic
+structures available in the repository.
+
+The next phase should not assume that semantic features outside
+Phase 7's documented scope already exist.
+
+## 20. Maintenance
+
+Update this document whenever the Phase 7 implementation or its
+acceptance criteria change.
+
+Keep documentation, implementation, and regression tests aligned.
+
+Do not mark unimplemented features as complete.
+
+Do not infer workflow success from a run number alone.
+
+---
+
+**Phase:** 7 — Semantic Analysis  
+**Project:** Kupln  
+**Status:** Implementation and pipeline regression coverage are in place, according to the repository owner's report.  
+**Next:** Phase 8 — Intermediate Representation (IR)
