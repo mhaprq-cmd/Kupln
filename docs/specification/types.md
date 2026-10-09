@@ -136,17 +136,75 @@ function log(message: String): Void {
     ...
 }
 Void is not a normal value type.
-13. User-Defined Types
-The Type System recognizes these declaration types:
-class
-interface
-struct
-record
-Each declaration introduces a named type.
-Example:
-class User {
-}
-This introduces the type User.
+13.1 Shared Type-Name Namespace
+
+The following user-defined declaration kinds share one type-name namespace within the same applicable scope:
+
+- "class"
+- "interface"
+- "struct"
+- "record"
+
+A type name must be unique across all four declaration kinds within that scope.
+
+13.1.1 Duplicate Type Names
+
+The compiler must reject duplicate type names even when the declarations use different declaration kinds.
+
+For example, the following declarations are invalid:
+
+class Account {}
+interface Account {}
+
+The same rule applies to duplicate declarations of the same kind:
+
+struct Account {}
+struct Account {}
+
+It also applies to every other combination of the four declaration kinds.
+
+13.1.2 Exported Declarations
+
+The "export" modifier does not create a separate type-name namespace and does not exempt a declaration from duplicate-name validation.
+
+The compiler must reject conflicting type names whether neither declaration, either declaration, or both declarations use "export".
+
+For example, the following declarations are invalid:
+
+class Account {}
+export interface Account {}
+
+Exporting both declarations does not make the duplicate valid.
+
+13.1.3 Scope
+
+The uniqueness rule applies within the same applicable scope.
+
+Allowing identical type names in independent namespaces or modules is deferred until Kupln defines and implements its namespace/module system.
+
+This rule does not establish support for namespaces or modules that are not otherwise implemented.
+
+13.1.4 Diagnostics
+
+When duplicate type names are detected, the compiler must report a semantic error.
+
+The diagnostic should identify:
+
+- The duplicated type name.
+- The conflicting declaration kinds, when available.
+- The source position of the conflicting declaration.
+
+Duplicate-name validation must remain effective when compilation proceeds through the normal analysis pipeline.
+
+13.1.5 Conformance
+
+The implementation must include regression tests for:
+
+- Duplicate names within each declaration kind.
+- Duplicate names across different declaration kinds.
+- Duplicate names with all relevant "export" combinations.
+- Diagnostic messages and source positions.
+- Duplicate-name detection through the normal compilation pipeline.
 14. Type References
 A type reference identifies a type by name.
 Examples:
