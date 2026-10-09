@@ -715,18 +715,46 @@ Every new component must answer four questions:
 If a component cannot answer these questions, it should not be added merely to make the repository appear more complete.
 
 ---
-
 28. Project Status
 
-Current stage: Foundation
+Current Stage: Foundation and Bootstrap Development
 
-The repository is being established before implementation of the complete Kupln toolchain.
+Kupln is progressing through its foundational implementation in controlled, validated stages. The project is building its language infrastructure before expanding into the complete compiler toolchain and platform ecosystem.
 
-The first implementation component after the initial documentation is:
+Completed and Validated Components
 
-Kupln Project Guard
+The repository currently includes:
 
-The Guard will be established early so that the project can continuously detect structural, architectural, implementation, and build problems before they propagate into later components.
+- Project Guard: Repository validation integrated into GitHub Actions.
+- Bootstrap infrastructure: Initial source-loading and host-side foundations.
+- Lexer: Initial lexical analysis implementation and tests.
+- Parser and AST: Initial parsing infrastructure and abstract syntax tree.
+- Type System — Phase 6: Initial type-system implementation, including type definitions, environments, declaration checking, expression checking, and the main type checker.
+
+Latest Validation Status
+
+- GitHub Actions validation completed successfully.
+- The Bootstrap test suite passed 52 tests in the latest confirmed successful run.
+- The identified type-operation conflicts were corrected and the mixed-numeric addition rejection is covered by a test.
+
+These results validate the current implementation and tests; they do not imply that the complete Kupln compiler or production toolchain is finished.
+
+Phase Status
+
+- Phase 6 — Type System: CLOSED.
+- Phase 7: NEXT. Its implementation scope and acceptance criteria must be established before work begins.
+
+Remaining Work
+
+The project still needs to implement and validate the subsequent compiler and language components, followed by the runtime, standard library, SDK, developer tools, package management, Registry integration, native platform backends, and progressive self-hosting.
+
+These components remain planned work unless their implementation and validation are confirmed in the repository.
+
+The project continues to follow its core development cycle:
+
+Inspect → Implement → Validate → Test → Fix verified issues → Validate again.
+
+Only actual repository state and test results should be used to update this status. Planned features must not be described as completed.
 
 ---
 
