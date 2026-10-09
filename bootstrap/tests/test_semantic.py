@@ -18,7 +18,6 @@ from bootstrap.parser.ast import (
 )
 from bootstrap.semantic.analyzer import (
     SemanticAnalysisError,
-    SemanticAnalyzer,
     analyze_compilation_unit,
 )
 
@@ -155,15 +154,19 @@ class SemanticAnalyzerTests(unittest.TestCase):
         with self.assertRaises(SemanticAnalysisError):
             analyze_compilation_unit(unit)
 
-    def test_class_and_interface_names_are_separate_graph_nodes(
+    def test_class_and_interface_cannot_share_a_type_name(
         self,
     ) -> None:
-        analyze_compilation_unit(
-            compilation_unit(
-                class_declaration("Shared"),
-                interface_declaration("Shared"),
-            )
+        unit = compilation_unit(
+            class_declaration("Shared"),
+            interface_declaration("Shared"),
         )
+
+        with self.assertRaisesRegex(
+            SemanticAnalysisError,
+            "Duplicate type name 'Shared'",
+        ):
+            analyze_compilation_unit(unit)
 
     def test_class_cannot_extend_interface(self) -> None:
         unit = compilation_unit(
@@ -329,4 +332,3 @@ class SemanticAnalyzerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-                      
