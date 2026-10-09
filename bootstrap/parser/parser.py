@@ -499,10 +499,10 @@ class Parser:
             fields=fields,
         )
 
-    def _parse_fields_until_close_brace(
+       def _parse_fields_until_close_brace(
         self,
     ) -> tuple[FieldDeclaration, ...]:
-            fields = []
+        fields = []
 
         while not self._check_lexeme("}") and not self._check(TokenKind.EOF):
             modifiers = self._parse_modifiers()
@@ -513,7 +513,7 @@ class Parser:
             "Expected '}' after declaration body.",
         )
 
-        return tuple(fields)
+        return tuple(fields) 
 
     def _parse_import(self) -> ImportDeclaration:
         start = self._current().position
