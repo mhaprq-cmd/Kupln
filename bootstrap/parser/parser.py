@@ -499,7 +499,7 @@ class Parser:
             fields=fields,
         )
 
-       def _parse_fields_until_close_brace(
+    def _parse_fields_until_close_brace(
         self,
     ) -> tuple[FieldDeclaration, ...]:
         fields = []
