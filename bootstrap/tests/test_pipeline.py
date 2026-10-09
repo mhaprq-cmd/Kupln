@@ -35,6 +35,34 @@ class AnalysisPipelineTests(unittest.TestCase):
         with self.assertRaises(SemanticAnalysisError):
             analyze_source(source)
 
+    def test_duplicate_type_names_are_rejected_by_full_pipeline(
+        self,
+    ) -> None:
+        source = """
+        class Shared {}
+        interface Shared {}
+        """
+
+        with self.assertRaisesRegex(
+            SemanticAnalysisError,
+            "Duplicate type name 'Shared'",
+        ):
+            analyze_source(source)
+
+    def test_duplicate_type_names_with_export_are_rejected_by_full_pipeline(
+        self,
+    ) -> None:
+        source = """
+        export class Shared {}
+        record Shared {}
+        """
+
+        with self.assertRaisesRegex(
+            SemanticAnalysisError,
+            "Duplicate type name 'Shared'",
+        ):
+            analyze_source(source)
+
     def test_unknown_type_is_rejected(self) -> None:
         source = "let item: MissingType;"
 
