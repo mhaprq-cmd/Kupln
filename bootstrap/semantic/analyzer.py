@@ -1,4 +1,3 @@
-
 """Kupln Bootstrap Semantic Analyzer.
 
 Validates semantic relationships that are not fully enforced by the
@@ -36,11 +35,52 @@ class SemanticAnalyzer:
 
     def analyze(self, compilation_unit: CompilationUnit) -> None:
         """Run semantic passes in a deterministic order."""
+        self._validate_duplicate_type_names(compilation_unit)
         declarations = self._collect_declarations(compilation_unit)
 
         self._validate_relationships(declarations)
         self._validate_inheritance_cycles(compilation_unit)
         self._validate_interface_contracts(declarations)
+
+    def _validate_duplicate_type_names(
+        self,
+        compilation_unit: CompilationUnit,
+    ) -> None:
+        """Reject duplicate names across all user-defined type kinds."""
+        seen: dict[str, object] = {}
+
+        declaration_kinds = (
+            ClassDeclaration,
+            InterfaceDeclaration,
+            StructDeclaration,
+            RecordDeclaration,
+        )
+
+        for item in compilation_unit.items:
+            declaration = self._unwrap(item)
+
+            if not isinstance(declaration, declaration_kinds):
+                continue
+
+            name = declaration.name.name
+
+            if name in seen:
+                previous = seen[name]
+                previous_kind = type(previous).__name__.removesuffix(
+                    "Declaration"
+                )
+                current_kind = type(declaration).__name__.removesuffix(
+                    "Declaration"
+                )
+
+                raise SemanticAnalysisError(
+                    f"Duplicate type name '{name}': "
+                    f"{current_kind} conflicts with an existing "
+                    f"{previous_kind} declaration.",
+                    declaration.name.position,
+                )
+
+            seen[name] = declaration
 
     @staticmethod
     def _unwrap(item):
@@ -370,5 +410,4 @@ __all__ = [
     "SemanticAnalysisError",
     "SemanticAnalyzer",
     "analyze_compilation_unit",
-            ]
-                
+        ]
