@@ -32,6 +32,7 @@ from .ast import (
     AssignmentExpression,
     BinaryExpression,
     Block,
+    CallExpression,
     ClassDeclaration,
     CompilationUnit,
     ConditionalExpression,
