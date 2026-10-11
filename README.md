@@ -716,46 +716,61 @@ If a component cannot answer these questions, it should not be added merely to m
 
 ---
 28. Project Status
-
-Current Stage: Foundation and Bootstrap Development
-
-Kupln is progressing through its foundational implementation in controlled, validated stages. The project is building its language infrastructure before expanding into the complete compiler toolchain and platform ecosystem.
-
+Current Stage: Compiler Foundations — Phase 7 Completed, Phase 8 Planned
+Kupln is being developed through controlled, validated stages. The project focuses on building a reliable programming-language foundation and compiler pipeline before expanding into the broader toolchain, runtime, and platform ecosystem.
 Completed and Validated Components
-
-The repository currently includes:
-
-- Project Guard: Repository validation integrated into GitHub Actions.
-- Bootstrap infrastructure: Initial source-loading and host-side foundations.
-- Lexer: Initial lexical analysis implementation and tests.
-- Parser and AST: Initial parsing infrastructure and abstract syntax tree.
-- Type System — Phase 6: Initial type-system implementation, including type definitions, environments, declaration checking, expression checking, and the main type checker.
-
-Latest Validation Status
-
-- GitHub Actions validation completed successfully.
-- The Bootstrap test suite passed 52 tests in the latest confirmed successful run.
-- The identified type-operation conflicts were corrected and the mixed-numeric addition rejection is covered by a test.
-
-These results validate the current implementation and tests; they do not imply that the complete Kupln compiler or production toolchain is finished.
-
+The repository includes the following foundational components:
+Project Guard: Repository validation integrated into GitHub Actions.
+Bootstrap Infrastructure: Initial source-loading and host-side development foundations.
+Lexer: Initial lexical-analysis implementation and associated tests.
+Parser and AST: Initial parsing infrastructure and abstract syntax tree.
+Phase 6 — Type System: Type definitions, type environments, declaration checking, expression checking, and the main type checker.
+Phase 7 — Semantic Analysis: Semantic-analysis implementation, integration with the bootstrap pipeline, and dedicated tests. Duplicate type declarations, including repeated declarations such as class User within the same applicable scope, are rejected.
+The listed components represent the implemented foundations and their documented scope. They do not imply that every planned language feature or compiler capability is complete.
+Validation Status
+The following validation results have previously been reported:
+GitHub Actions: Run #93 completed successfully.
+Phase 6 Bootstrap Tests: 52 tests passed in the previously reported test run.
+Phase 7 Semantic Analysis: Dedicated semantic-analysis tests were added and reported as passing.
+Phase 7 Pipeline Integration: Dedicated pipeline tests were added and reported as passing.
+Previously confirmed GitHub Actions run:
+https://github.com/mhaprq-cmd/Kupln/actions/runs/37990112700
+These results belong to their respective revisions and test runs. They do not prove that the latest repository revision has passed every test or that the complete Kupln compiler is production-ready.
 Phase Status
-
-- Phase 6 — Type System: CLOSED.
-- Phase 7: NEXT. Its implementation scope and acceptance criteria must be established before work begins.
-
+Phase 6 — Type System: CLOSED.
+Phase 7 — Semantic Analysis: CLOSED — implementation and verification reported complete, including duplicate type-declaration handling.
+Phase 8 — Intermediate Representation (IR): PLANNED — the initial scope and documentation baseline are being established before implementation.
+Phase completion applies only to the defined scope and acceptance criteria of each phase. It does not imply completion of later compiler stages.
+Phase 8 — Intermediate Representation (IR)
+The next planned stage is to introduce an initial, platform-independent Intermediate Representation (IR) and define how supported AST structures are converted into it.
+The initial implementation is expected to establish:
+A clear and consistent IR data model.
+Explicit representations for supported language constructs.
+A defined lowering process from supported AST nodes to IR.
+Integration with the existing bootstrap pipeline.
+Preservation of existing type-checking and semantic-validation behavior.
+Explicit errors for unsupported or invalid constructs.
+Focused unit tests and regression tests.
+Documentation of the IR structure, conversion rules, limitations, and acceptance criteria.
+ initial IR stage is intended to establish a stable intermediate compiler layer without prematurely introducing platform-specific implementation details.
+The following capabilities are outside the initial Phase 8 scope unless separately specified and approved:
+ optimization.
+Native machine-code generation.
+Platform-specific compiler backends.
+Runtime execution.
+A complete runtime environment.
+Self-hosting.
+Unrelated language features that are not required to establish the initial IR.
 Remaining Work
-
-The project still needs to implement and validate the subsequent compiler and language components, followed by the runtime, standard library, SDK, developer tools, package management, Registry integration, native platform backends, and progressive self-hosting.
-
-These components remain planned work unless their implementation and validation are confirmed in the repository.
-
-The project continues to follow its core development cycle:
-
-Inspect → Implement → Validate → Test → Fix verified issues → Validate again.
-
-Only actual repository state and test results should be used to update this status. Planned features must not be described as completed.
-
+Further development is expected to cover subsequent compiler stages and, in later phases, the runtime, standard library, SDK, developer tools, package management, Registry integration, native platform backends, and progressive self-hosting.
+These capabilities remain planned work unless their implementation and validation are confirmed in the repository.
+The project must preserve a clear distinction between implemented functionality, tested functionality, documented plans, and future goals. Documentation must reflect the actual repository state rather than anticipated results.
+Development and Validation Cycle
+Kupln follows this development cycle:
+Inspect → Implement → Validate → Test → Fix Verified Issues → Validate Again
+Each stage must build on the existing repository state, preserve previously validated behavior, and introduce only the changes required by its approved scope.
+Tests and validation results must be reported according to the revision on which they were executed. A successful earlier run must not be presented as confirmation that a later revision has passed.
+Project Status Principle: Only actual repository state and verified results should be used to describe implementation and validation status. Planned features must not be described as completed.
 ---
 
 29. Guiding Principle
