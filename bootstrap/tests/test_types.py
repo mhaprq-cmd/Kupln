@@ -136,6 +136,26 @@ class TypeSystemTests(unittest.TestCase):
 
         check_compilation_unit(unit)
 
+    def test_true_literal_has_bool_type(self) -> None:
+        checker = TypeChecker()
+
+        self.assertEqual(
+            checker._check_expression(
+                literal("true", "true")
+            ),
+            BOOL,
+        )
+
+    def test_false_literal_has_bool_type(self) -> None:
+        checker = TypeChecker()
+
+        self.assertEqual(
+            checker._check_expression(
+                literal("false", "false")
+            ),
+            BOOL,
+        )
+
     def test_incompatible_variable_assignment_is_rejected(self) -> None:
         declaration = VariableDeclaration(
             position=POSITION,
