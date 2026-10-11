@@ -1,4 +1,4 @@
-```python
+
 """Tests for the Kupln bootstrap parser."""
 
 from __future__ import annotations
@@ -396,4 +396,3 @@ class ParserTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-```
