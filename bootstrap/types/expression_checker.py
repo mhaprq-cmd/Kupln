@@ -1,3 +1,4 @@
+
 """Kupln Bootstrap Expression Type Checker.
 
 Expression type inference and validation for the bootstrap type checker.
@@ -124,7 +125,7 @@ class ExpressionCheckerMixin:
         if kind == "CHAR":
             return CHAR
 
-        if kind == "BOOL":
+        if kind in {"BOOL", "TRUE", "FALSE"}:
             return BOOL
 
         if kind == "NULL":
@@ -440,6 +441,7 @@ class ExpressionCheckerMixin:
                         f"'{right_type.name}'."
                     ),
                     InvalidTypeOperationError,
+                    
                 )
 
             return common
