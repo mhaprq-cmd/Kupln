@@ -439,24 +439,33 @@ when the following criteria have been verified:
 Completion must be based on implementation and verification results,
 not merely on the presence of files or on a single successful test.
 
+
 ## 18. Verification Status
 
-**Status: Implementation in progress — final phase verification pending.**
+**Status: Verified — completed for the approved initial scope.**
 
-The IR model, AST-to-IR lowerer, pipeline entry point, and focused
-tests are present in the repository.
+The IR model, AST-to-IR lowerer, pipeline entry point, unit tests,
+pipeline integration tests, and documentation are present.
 
-The pipeline integration tests have been updated to exercise the
-`compile_to_ir` path. The user has reported that GitHub Actions passed
-after that test-file update.
+GitHub Actions Project Guard run 116 completed successfully for the
+documentation revision. Both the `Run Project Guard` and
+`Run Bootstrap tests` steps passed.
 
-This report does not independently establish the result of every
-repository test, the current Project Guard result for the latest
-documentation revision, or completion of every acceptance criterion.
+The workflow runs:
 
-Final status must be updated only after the remaining repository-wide
-verification and review have been completed. Do not invent test counts,
-workflow run identifiers, or validation results.
+- `python tools/project-guard/guard.py`
+- `python -m unittest discover -s bootstrap/tests -p "test_*.py"`
+
+This verifies the checks executed by that workflow for the tested
+revision. It does not establish complete lowering coverage for every
+AST construct, a production-ready compiler, or features outside the
+approved initial scope.
+
+The phase is accepted within the limitations documented above.
+Future work must preserve the existing validation and workflow
+protections.
+
+
 
 ## 19. Completion Boundary
 
@@ -496,5 +505,5 @@ explicit approval.
 Project: Kupln  
 Phase: 8 — Intermediate Representation (IR)  
 Previous Phase: Phase 7 — Semantic Analysis  
-Status: Implementation in progress — final verification pending  
+Status: Completed — approved initial IR scope verified
 Next Phase: To be determined after Phase 8 review
