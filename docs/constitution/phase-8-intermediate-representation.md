@@ -1,50 +1,37 @@
+
 # Phase 8 — Intermediate Representation (IR)
 
 ## 1. Phase Overview
 
-Phase 8 introduces the initial Intermediate Representation (IR)
-for the Kupln bootstrap compiler.
+Phase 8 introduces the initial platform-independent Intermediate
+Representation (IR) for the Kupln bootstrap compiler.
 
-The purpose of this phase is to establish a structured,
-platform-independent representation of Kupln programs that can
-be consumed by future compiler stages.
+The IR establishes a structured boundary between validated source
+analysis and future compiler stages. It is an intermediate compiler
+representation, not executable output.
 
-The IR must provide a clear boundary between the existing
-source-analysis infrastructure and future compiler operations.
-
-This phase builds on the lexer, parser, AST, type-checking
-infrastructure, semantic analyzer, and compilation pipeline.
-
-The implementation must reflect the actual capabilities of
-the existing repository and must not assume that unsupported
-language features are already implemented.
+This document records the implemented scope and known limitations.
+The presence of an implementation or passing individual tests does
+not, by itself, establish completion of the entire phase.
 
 ## 2. Objectives
 
-The objectives of Phase 8 are:
+Phase 8 aims to:
 
-- Define the purpose and architectural boundary of Kupln IR.
-- Establish an initial IR data model.
-- Define how supported AST structures are lowered into IR.
-- Preserve the meaning of supported source constructs.
-- Reject invalid or unsupported input rather than silently
-  generating misleading IR.
-- Keep the IR independent of operating systems, device platforms,
-  and native application targets.
-- Integrate IR generation with the existing bootstrap pipeline
-  without breaking previous stages.
-- Provide focused unit tests and pipeline-level regression tests.
-- Keep the implementation small, deterministic, and extensible.
-- Document the actual implementation and its limitations.
+- Define a platform-independent IR data model.
+- Lower supported AST constructs into IR.
+- Preserve the structure and meaning of supported constructs.
+- Reject unsupported constructs explicitly.
+- Integrate IR generation with the existing compilation pipeline.
+- Preserve parsing, type-checking, and semantic-analysis failures.
+- Verify deterministic lowering and pipeline integration.
+- Document actual capabilities, limitations, and verification status.
 
-## 3. Architectural Position
+## 3. Compiler Architecture
 
-The intended long-term compiler architecture is:
+The intended compiler flow is:
 
 Kupln Source (.kpl)
-        |
-        v
-Source Loading
         |
         v
 Lexer
@@ -53,353 +40,461 @@ Lexer
 Parser
         |
         v
-AST
+Abstract Syntax Tree (AST)
         |
         v
-Type Checking and Semantic Validation
+Type Checking
         |
         v
-Kupln Intermediate Representation (IR)
+Semantic Analysis
         |
         v
-Future Optimization
+AST-to-IR Lowering
         |
         v
-Future Platform Backend
+Platform-independent IR
         |
         v
-Target Output
+Future Optimization and Backends
 
-This diagram describes the intended architectural direction.
-It does not mean that every stage shown above is already
-implemented or production-ready.
+The final stages shown above are architectural direction only.
+IR optimization, backend generation, executable output, and runtime
+execution are outside the implemented scope of Phase 8.
 
-Phase 8 is responsible for introducing the initial IR boundary.
+## 4. Implementation Boundaries
 
-It must preserve the existing responsibilities of the lexer,
-parser, type checker, semantic analyzer, and compilation pipeline.
+The current implementation uses these files:
 
-The exact integration point must be compatible with the actual
-pipeline implementation and the results of the preceding stages.
+- `bootstrap/ir/model.py`
+  Defines the IR data model.
+- `bootstrap/ir/lowering.py`
+  Converts supported AST constructs into IR and raises
+  `IRLoweringError` when conversion is unsupported.
+- `bootstrap/pipeline.py`
+  Provides the source parsing, analysis, and IR compilation entry points.
+- `bootstrap/tests/test_ir.py`
+  Tests IR model behavior and AST-to-IR lowering.
+- `bootstrap/tests/test_pipeline.py`
+  Tests existing analysis behavior and integration of IR generation.
+- `docs/constitution/phase-8-intermediate-representation.md`
+  Documents the design, implementation boundaries, and verification status.
 
-## 4. Scope
+These files describe the current implementation boundary. They do not
+imply that every possible AST construct is supported by the IR.
 
-Phase 8 focuses on the initial IR model and the transformation
-of supported AST structures into that representation.
+## 5. IR Data Model
 
-The scope includes:
+The current IR model is defined in `bootstrap/ir/model.py`.
 
-- IR architecture and data-model definition.
-- IR instruction or node representation.
-- A clear boundary between AST and IR.
-- Lowering supported AST constructs into IR.
-- Deterministic IR generation.
-- Structured errors for unsupported or invalid input.
-- Integration with the bootstrap compilation pipeline.
-- Unit tests for the IR model and lowering behavior.
-- Regression tests for pipeline integration.
-- Documentation of supported constructs and limitations.
+It contains the following immutable data structures:
 
-The initial implementation must be limited to constructs that
-are represented by the existing AST and sufficiently validated
-by the existing analysis infrastructure.
+- `IRSourceLocation`: source line, column, and offset.
+- `IRValue`: a named value with an optional type name.
+- `IRConstant`: a literal kind and its source-level value.
+- `IROpcode`: the supported instruction operation identifiers.
+- `IRInstruction`: an opcode, optional result, operands, and optional
+  source location.
+- `IRParameter`: a function parameter and optional type name.
+- `IRBasicBlock`: an ordered sequence of instructions.
+- `IRFunction`: a function name, parameters, optional return type,
+  and ordered basic blocks.
+- `IRModule`: an ordered collection of functions.
 
-Future language features must not be invented merely to expand
-the apparent scope of this phase.
+The model uses frozen dataclasses and tuples to preserve immutable,
+ordered IR structures.
 
-## 5. IR Design Principles
+### 5.1 Instruction Kinds
 
-The initial IR must follow these principles:
+The initial opcode inventory is:
 
-### 5.1 Platform Independence
+- `CONSTANT`
+- `PARAMETER`
+- `DECLARE_VARIABLE`
+- `STORE`
+- `LOAD`
+- `UNARY`
+- `BINARY`
+- `CALL`
+- `RETURN`
 
-The IR must not depend on:
+These opcodes describe the initial supported representation. Their
+existence does not mean that every source-language construct, execution
+semantics, or backend operation has been implemented.
 
-- Android
-- iOS
-- Windows
-- Linux
-- macOS
-- WebAssembly
-- A specific processor architecture
-- A specific native ABI
-- A specific device or runtime
+### 5.2 Source Locations
 
-Target-specific details belong to future backend boundaries.
+Lowering preserves source coordinates for supported instructions
+when the corresponding AST node provides a source position.
 
-### 5.2 Explicit Structure
+IR source locations are diagnostic metadata. They do not constitute
+a complete debugging-information or source-mapping subsystem.
 
-IR data must have an explicit and inspectable structure.
+## 6. AST-to-IR Lowering
 
-The implementation must avoid representing an entire program
-as an unstructured string.
+The public lowering entry point is:
 
-IR nodes or instructions must use stable fields and clearly
-defined relationships.
+`lower_compilation_unit(compilation_unit)`
 
-### 5.3 Determinism
+It accepts a parsed `CompilationUnit` and returns an `IRModule`
+when all encountered constructs are supported by the initial lowerer.
 
-Given equivalent validated input and equivalent compiler
-configuration, IR generation must produce equivalent IR.
+The lowerer does not execute source programs.
 
-Generation must not depend on:
+### 6.1 Supported Top-Level Constructs
 
-- Network access
-- Random values
-- Wall-clock time
-- Uncontrolled filesystem state
-- Undeclared environment variables
+The initial lowerer supports synchronous function declarations
+without function modifiers.
 
-### 5.4 Separation of Responsibilities
+A module can contain multiple supported functions. Function order
+is preserved in the resulting IR module.
 
-The IR generator must not replace the lexer, parser,
-type checker, or semantic analyzer.
+Top-level constructs other than supported function declarations are
+rejected explicitly. Export declarations are also rejected.
 
-Each component must retain a distinct responsibility.
+### 6.2 Supported Function Components
 
-### 5.5 Minimal Dependencies
+The initial function lowerer supports:
 
-The implementation should prefer the host language's standard
-library and existing project infrastructure.
+- Function parameters.
+- Optional parameter type annotations.
+- Optional function return type annotations.
+- Variable declarations.
+- Return statements, with or without an expression.
+- Expression statements.
+- Empty statements.
 
-New external dependencies require a concrete technical reason.
+Each lowered function currently contains one basic block named
+`entry`.
 
-### 5.6 Extensibility
+The initial lowerer does not construct a control-flow graph.
 
-The initial representation must permit future additions
-without requiring unrelated compiler stages to be rewritten.
+### 6.3 Supported Expressions
 
-Extensibility must not justify introducing speculative
-instructions or unsupported language semantics.
+The initial lowerer supports:
 
-## 6. IR Data Model
+- Literal expressions.
+- Identifier expressions referring to supported local variables
+  or parameters.
+- Parenthesized expressions.
+- Unary expressions.
+- Binary expressions.
+- Assignments to local identifiers.
+- Calls to named functions declared in the compilation unit.
+- Calls through supported local callable values.
 
-The initial IR data model must be designed from the AST structures
-and language constructs that actually exist in the repository.
+Temporary values use deterministic names within each function.
+The lowerer emits explicit instructions for supported operations.
 
-The implementation should establish:
+The current representation preserves literal values as strings,
+matching the lexical-value representation in the AST.
 
-- A common representation boundary for IR nodes or instructions.
-- Explicit operands and values where required.
-- Explicit references between related IR elements.
-- A representation for supported declarations and expressions.
-- Stable ordering where instruction or declaration order matters.
-- A clear way to associate generated IR with its source construct
-  when the existing source-position information permits it.
+### 6.4 Unsupported Constructs
 
-The design must distinguish between source syntax and the
-compiler's intermediate representation.
+The initial lowerer explicitly rejects unsupported constructs,
+including:
 
-The IR must not simply duplicate the AST without defining
-a meaningful purpose for the transformation.
+- Asynchronous functions.
+- Function modifiers.
+- Export declarations.
+- Classes, interfaces, structs, records, imports, and other
+  unsupported top-level items.
+- Conditional statements and loops.
+- Try/catch statements.
+- Nested blocks not handled by the current function-body lowering.
+- Unsupported expressions, including member access, indexing,
+  object construction, array expressions, conditional expressions,
+  and postfix expressions.
+- Assignments whose target is not a supported local identifier.
+- Identifiers or call targets outside the supported scope.
 
-The phase must document which constructs are supported and
-which remain unsupported.
+This list describes the current initial lowering boundary, not a
+permanent restriction on the Kupln language.
 
-The exact node and instruction inventory must be based on the
-existing AST and must be finalized before implementation expands.
+Unsupported input must fail rather than be silently omitted.
 
-## 7. AST-to-IR Lowering
+## 7. Platform Independence
 
-Lowering converts supported AST structures into the IR model.
+The IR data model does not encode a particular operating system,
+processor architecture, device ABI, or application packaging format.
 
-The lowering implementation must:
+No Android-, iOS-, desktop-, or web-specific backend is implemented
+as part of this phase.
 
-- Accept the existing AST representation.
-- Process only supported AST structures.
-- Preserve the semantics of supported constructs.
-- Produce deterministic IR.
-- Reject unsupported constructs explicitly.
-- Avoid silently dropping source constructs that affect meaning.
-- Avoid executing the program during lowering.
-- Avoid generating platform-specific machine instructions.
+Future backends must define their own target-specific responsibilities
+without making target details prerequisites for constructing the
+platform-independent IR.
 
-If a source construct cannot yet be represented correctly,
-the lowering process must report a clear failure rather than
-pretend that conversion succeeded.
+## 8. Analysis and Validation Boundary
 
-The implementation must not add new language syntax merely
-to make lowering easier.
+The pipeline entry point for producing IR is:
 
-## 8. Type and Semantic Validation Boundary
+`compile_to_ir(source: str) -> IRModule`
 
-IR generation must operate on input that has passed the required
-preceding analysis stages.
+The current pipeline performs these steps in order:
 
-The existing type checker and semantic analyzer remain responsible
-for their own validation rules.
+1. Tokenize and parse the source.
+2. Run the existing type checker.
+3. Run the existing semantic analyzer.
+4. Lower the analyzed AST into IR.
 
-Phase 8 must not bypass errors from those stages.
+The existing public functions remain available:
 
-For example, duplicate type declarations such as:
+- `parse_source(source)`
+- `analyze_compilation_unit(compilation_unit)`
+- `analyze_source(source)`
+- `compile_to_ir(source)`
 
-```kupln
-class User {}
-class User {}
-must continue to be rejected by the existing semantic-validation infrastructure within the applicable scope.
-IR generation must not treat this invalid program as a successful, validated compilation unit.
-The same principle applies to other errors detected by existing type checking or semantic analysis.
-Phase 8 must not claim that all possible type or semantic errors are detected unless those rules are implemented and tested.
-9. Error Handling
-IR generation must provide a clear failure mechanism for problems encountered while constructing the representation.
-Expected failure categories may include:
-Unsupported AST construct.
-Invalid or inconsistent input to the IR generator.
-An IR construction invariant being violated.
-A lowering operation that cannot preserve the source meaning.
-Error handling must remain consistent with the repository's existing error conventions wherever practical.
-Failures must not be silently ignored.
-The pipeline must not report successful IR generation when the generated representation is incomplete or invalid.
-The implementation should preserve source-location information when the available AST and source models make this possible.
-10. Pipeline Integration
-The IR stage must integrate with the existing bootstrap pipeline.
-The integration must preserve the public behavior of existing source parsing and analysis functions unless an explicitly documented change is required.
-The phase must establish a clear entry point for lowering an analyzed compilation unit into IR.
-Pipeline integration must ensure that:
-Parsing errors prevent subsequent stages from proceeding.
-Type-checking failures prevent invalid input from proceeding.
-Semantic-analysis failures prevent invalid input from proceeding.
-Lowering failures are propagated to the caller.
-Successful lowering returns the defined IR representation.
-Existing parsing, type-checking, and semantic tests continue to pass.
-The implementation must not introduce an unrelated parallel compilation pipeline.
-11. Suggested Implementation Boundaries
-The following paths are proposed for the initial implementation. They must be created only when required by the approved design.
-Potential IR implementation directory:
-bootstrap/ir/
-Potential implementation responsibilities:
-IR model and node definitions.
-AST-to-IR lowering.
-IR-specific validation where required.
-Potential test file:
-bootstrap/tests/test_ir.py
-Potential pipeline regression tests:
-bootstrap/tests/test_pipeline.py
-The existing pipeline file is:
-bootstrap/pipeline.py
-These paths describe intended boundaries, not a claim that the proposed IR files already exist.
-The final file layout must be checked against the actual repository before implementation.
-Avoid creating empty directories or placeholder files merely to make the project structure look more complete.
-12. Testing Requirements
-The IR implementation must have focused tests.
-Tests should verify:
-Construction of valid IR elements.
-Correct lowering of supported AST constructs.
-Preservation of relevant source semantics.
-Deterministic output for equivalent input.
-Explicit rejection of unsupported constructs.
-Correct handling of invalid IR construction.
-Propagation of lowering errors through the pipeline.
-Preservation of existing compiler-stage behavior.
-Tests must use the syntax and AST structures supported by the actual repository.
-They must not assume that unimplemented syntax is valid.
-13. Pipeline Regression Requirements
-Pipeline tests must verify the complete supported path from source analysis to IR generation.
-At minimum, the tests should establish that:
-Valid supported source can produce IR.
-Invalid syntax does not produce successful IR.
-Type-checking errors prevent successful IR generation.
-Semantic errors prevent successful IR generation.
-Duplicate type declarations remain rejected.
-Unsupported constructs produce explicit failures.
-Existing parsing and analysis tests remain compatible.
-Tests must distinguish between a successful analysis result, a successful IR result, and a future executable output.
-Generating IR does not mean that the source program can already be executed or compiled into a native application.
-14. What Phase 8 Does Not Include
-Phase 8 does not implement or claim completion of:
-IR optimization.
-Native code generation.
-Platform backends.
-Machine-code generation.
-Executable or application packaging.
-Runtime execution.
-Memory-management implementation.
-Ownership and borrowing analysis beyond existing support.
-A production ABI.
-A complete HIR subsystem unless separately specified and approved.
-A complete production compiler.
-Kupln self-hosting.
-These components remain future work unless their implementation is separately defined, implemented, and validated.
-15. HIR and Kupln IR Boundary
-The long-term Kupln architecture may distinguish between High-Level Intermediate Representation (HIR) and a lower-level Kupln IR.
-Phase 8 must not create two overlapping representations without a clear architectural need.
-The initial implementation must define the purpose of the representation it introduces and document its abstraction level.
-If a separate HIR and Kupln IR are required later, their responsibilities and conversion boundaries must be specified before both are implemented.
-The distinction must not be determined solely by naming.
-16. Optimization Boundary
-Optimization is outside the implementation scope of Phase 8.
-The initial IR should be structured so that future optimization can be introduced without making optimization a prerequisite for generating valid IR.
-The IR generator must not silently modify program behavior under the label of optimization.
-Any future optimization pass must define its own correctness requirements and regression tests.
-17. Platform Backend Boundary
-The IR must remain independent of specific target platforms.
-Future backends may consume the IR and transform it into target-specific representations.
-Phase 8 must not select a permanent target platform or encode Android-specific, operating-system-specific, or processor-specific assumptions into the language-level IR.
-Backend implementation remains outside this phase.
-18. Dependency and Security Requirements
-The IR implementation must preserve the bootstrap project's dependency and security boundaries.
-It must not:
-Execute source programs during lowering.
-Download or resolve external packages implicitly.
-Modify source files during IR generation.
-Modify repository state unexpectedly.
-Bypass Project Guard.
-Hide compilation errors.
-Introduce unnecessary external dependencies.
-IR generation must remain inspectable and testable.
-19. Documentation Requirements
-The implementation must be documented accurately.
-Documentation must identify:
-The purpose of the initial IR.
-The supported IR elements.
-The supported AST-to-IR conversions.
-The pipeline integration point.
-Error behavior.
-Known limitations.
-Test coverage.
-Future work that remains out of scope.
-The documentation must not claim that unsupported instructions, optimizations, backends, or runtime capabilities exist.
-The actual implementation and tests take precedence over assumptions based on planned architecture.
-20. Acceptance Criteria
-Phase 8 may be considered complete for its documented scope when all of the following are satisfied:
-The initial IR design is explicit and documented.
-The IR model is implemented.
-Supported AST constructs can be lowered correctly.
-Unsupported constructs fail explicitly.
-IR generation is deterministic for equivalent inputs.
-The IR remains platform-independent.
-The stage is integrated with the existing pipeline.
-Existing type-checking and semantic validation remain active.
-Duplicate type declarations remain rejected.
-Unit and pipeline regression tests cover the implementation.
-Existing tests continue to pass.
-Project Guard passes without weakening existing protections.
-The documentation reflects the actual repository state.
-No future functionality is incorrectly described as complete.
-Completion must be determined from the actual implementation and validation results, not from the presence of files alone.
-21. Verification Status
-Initial status:
-Planned — Documentation and implementation have not yet been declared complete by this document.
-When implementation begins, record the actual files and tests that were added or changed.
-When implementation is completed, update this section with verified results.
-Do not invent test counts, workflow run identifiers, or successful validation claims.
-A successful workflow validates only the checks that it actually executed for the corresponding revision.
-22. Completion Boundary
-Completing Phase 8 means that the documented initial IR capability has been implemented and validated.
-It does not mean that Kupln has a complete production compiler.
-It does not imply that IR optimization, code generation, runtime execution, platform backends, or self-hosting are complete.
-Future phases must build on the verified IR boundary without silently expanding its responsibilities.
-23. Next Phase
-The next phase must be determined from the actual state of the repository and the remaining compiler architecture.
-Potential future work includes IR validation, additional lowering support, optimization, or backend preparation.
-No subsequent phase should be declared complete merely because its architectural direction has been discussed.
-24. Maintenance
-Update this document whenever the approved Phase 8 scope, implementation, or acceptance criteria change.
-Keep documentation, implementation, tests, and pipeline behavior aligned.
-Do not modify existing GitHub workflow procedures as part of Phase 8 documentation.
-Any future change to workflow procedures must be handled separately and explicitly approved.
-Phase: 8 — Intermediate Representation (IR)
-Project: Kupln
-Status: Planned — Documentation baseline
-Previous Phase: Phase 7 — Semantic Analysis
-Next: To be determined after Phase 8 implementation and review
+Parsing, type-checking, and semantic-analysis errors are propagated
+to the caller. Lowering errors are also propagated.
+
+Successful parsing or analysis alone does not guarantee that the
+program belongs to the supported IR subset. A program may pass the
+existing analysis stages and still be rejected during lowering.
+
+The existing analysis infrastructure remains responsible for the
+rules it currently implements. Phase 8 does not claim complete
+type safety or complete semantic validation for every language feature.
+
+## 9. Error Handling
+
+`IRLoweringError` represents failures encountered when the lowerer
+cannot represent a construct within the supported IR subset.
+
+The error includes a descriptive message and the source position
+where the unsupported construct was encountered.
+
+The pipeline does not convert lowering failures into successful
+IR results.
+
+Existing parser, type-checker, and semantic-analysis exceptions
+remain distinct and are not intentionally swallowed by IR generation.
+
+The lowerer is designed to reject unsupported constructs explicitly.
+It is not yet a complete IR verifier and does not establish every
+possible IR invariant or prove semantic equivalence for all Kupln
+programs.
+
+## 10. Determinism
+
+The initial lowering implementation uses ordered collections,
+deterministic traversal, and sequential temporary-value names.
+
+The existing IR tests include a determinism check that compares the
+IR produced by repeated lowering of equivalent parsed source.
+
+This establishes a focused regression check for the tested input.
+It is not a formal proof of determinism for every possible AST.
+
+## 11. Scope Limitations
+
+The current IR is an initial compiler representation, not a complete
+production IR.
+
+Known limitations include:
+
+- One basic block per function.
+- No control-flow graph construction.
+- No optimization passes.
+- No machine-code or bytecode generation.
+- No platform backend.
+- No runtime execution.
+- No executable or application packaging.
+- No complete symbol-resolution or callable-type system in the IR.
+- No comprehensive IR verification pass.
+- No guarantee of complete lowering coverage for the Kupln AST.
+- No claim of complete source-language semantic preservation beyond
+  the constructs currently represented and tested.
+
+The current lowerer also has limited scope handling. It tracks
+parameters and local variables in a function-level name table rather
+than implementing a complete lexical-scope model.
+
+Future work must address control flow, scope rules, value typing,
+and IR validation before the representation can support broader
+compiler guarantees.
+
+## 12. Testing Requirements
+
+The following test files cover the initial implementation:
+
+### 12.1 IR Unit Tests
+
+`bootstrap/tests/test_ir.py`
+
+The existing tests cover:
+
+- IR source-location fields.
+- IR value and constant fields.
+- Instruction structure and operands.
+- Ordered function, block, and module structure.
+- Immutability of IR model objects.
+- Lowering a supported function with a binary return expression.
+- Deterministic lowering for a supported example.
+- Explicit rejection of unsupported top-level constructs.
+- Explicit rejection of unsupported control flow.
+
+### 12.2 Pipeline Integration Tests
+
+`bootstrap/tests/test_pipeline.py`
+
+The existing tests cover analysis behavior, including syntax errors,
+type-checking errors, inheritance cycles, and duplicate type names.
+
+The IR integration tests additionally cover:
+
+- Successful IR generation for a supported function.
+- Propagation of syntax errors.
+- Rejection of unknown types by the existing type checker.
+- Rejection of duplicate type names by semantic analysis.
+- Propagation of lowering errors for unsupported constructs.
+
+These tests cover representative paths. They do not establish complete
+coverage of every AST node or every invalid program.
+
+## 13. Regression and Project Guard
+
+Phase 8 must preserve the existing test and workflow protections.
+
+No GitHub Actions workflow should be weakened, bypassed, or modified
+merely to make the IR implementation pass.
+
+The complete repository test suite and the existing Project Guard
+must pass before Phase 8 is declared complete.
+
+A successful workflow run validates only the checks actually executed
+for that revision. It must not be interpreted as proof of features
+that the tests do not exercise.
+
+## 14. Out of Scope
+
+Phase 8 does not implement:
+
+- IR optimization.
+- Native code generation.
+- Machine-code generation.
+- Platform backends.
+- Runtime execution.
+- Executable or application packaging.
+- Production ABI support.
+- A complete memory-management subsystem.
+- New ownership or borrowing analysis.
+- Kupln self-hosting.
+- A complete production compiler.
+- A separate HIR subsystem without an approved architectural need.
+
+These capabilities must be scoped, implemented, and verified in
+their appropriate future work.
+
+## 15. HIR and IR Boundary
+
+The long-term architecture may distinguish between High-Level
+Intermediate Representation (HIR) and a lower-level Kupln IR.
+
+Phase 8 establishes only the initial IR representation defined in
+this document.
+
+A second intermediate representation must not be introduced merely
+to create additional layers. If future requirements justify HIR and
+a lower-level IR, their responsibilities and conversion boundaries
+must be specified before implementation.
+
+## 16. Dependency and Security Requirements
+
+The IR implementation must continue to:
+
+- Avoid executing source programs during lowering.
+- Avoid implicit network access or external package resolution.
+- Avoid modifying source files during IR generation.
+- Avoid unexpected repository-state changes.
+- Avoid bypassing existing validation or Project Guard.
+- Avoid hiding parser, type-checker, semantic-analysis, or lowering
+  failures.
+- Prefer existing project infrastructure and standard-library tools.
+
+Any future dependency must have a concrete technical justification.
+
+## 17. Acceptance Criteria
+
+Phase 8 may be declared complete for its approved initial scope only
+when the following criteria have been verified:
+
+- The IR model is explicit, immutable where designed, and documented.
+- Supported AST constructs lower into the documented IR structures.
+- Unsupported constructs fail explicitly.
+- Repeated lowering of equivalent supported input is deterministic
+  for the tested cases.
+- The IR remains platform-independent.
+- IR generation is integrated with the existing pipeline.
+- Existing type-checking and semantic-analysis stages run before
+  lowering.
+- Parsing, type-checking, semantic-analysis, and lowering errors
+  propagate to the caller.
+- Duplicate type declarations remain rejected.
+- IR unit tests and pipeline integration tests pass.
+- The complete existing test suite passes.
+- Project Guard passes without weakened protections.
+- Documentation matches the actual code and test results.
+- Remaining limitations are clearly documented.
+
+Completion must be based on implementation and verification results,
+not merely on the presence of files or on a single successful test.
+
+## 18. Verification Status
+
+**Status: Implementation in progress — final phase verification pending.**
+
+The IR model, AST-to-IR lowerer, pipeline entry point, and focused
+tests are present in the repository.
+
+The pipeline integration tests have been updated to exercise the
+`compile_to_ir` path. The user has reported that GitHub Actions passed
+after that test-file update.
+
+This report does not independently establish the result of every
+repository test, the current Project Guard result for the latest
+documentation revision, or completion of every acceptance criterion.
+
+Final status must be updated only after the remaining repository-wide
+verification and review have been completed. Do not invent test counts,
+workflow run identifiers, or validation results.
+
+## 19. Completion Boundary
+
+Completing Phase 8 means that the documented initial IR capability
+has been implemented and validated within its stated limitations.
+
+It does not mean that Kupln has a complete production compiler, an
+executable runtime, native application output, optimization, or
+platform backends.
+
+Future phases must build on the verified IR boundary without
+silently expanding the responsibilities of this phase.
+
+## 20. Next Phase
+
+The next phase must be selected after the Phase 8 implementation,
+tests, documentation, and acceptance criteria have been reviewed.
+
+Potential future work may include stronger IR validation, broader
+lowering coverage, control-flow representation, optimization, or
+backend preparation. Such work requires explicit scope and tests.
+
+## 21. Maintenance
+
+Update this document when the approved scope, implementation,
+supported constructs, limitations, or verification status changes.
+
+Keep the documentation, implementation, tests, and pipeline behavior
+aligned.
+
+Do not modify GitHub workflow procedures as part of this documentation
+update. Any future workflow change requires separate review and
+explicit approval.
+
+---
+
+Project: Kupln  
+Phase: 8 — Intermediate Representation (IR)  
+Previous Phase: Phase 7 — Semantic Analysis  
+Status: Implementation in progress — final verification pending  
+Next Phase: To be determined after Phase 8 review
