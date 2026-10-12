@@ -1,3 +1,4 @@
+
 """Unit tests for the Kupln Intermediate Representation model."""
 
 from __future__ import annotations
@@ -5,6 +6,10 @@ from __future__ import annotations
 import unittest
 from dataclasses import FrozenInstanceError
 
+from bootstrap.ir.lowering import (
+    IRLoweringError,
+    lower_compilation_unit,
+)
 from bootstrap.ir.model import (
     IRBasicBlock,
     IRConstant,
@@ -16,6 +21,7 @@ from bootstrap.ir.model import (
     IRSourceLocation,
     IRValue,
 )
+from bootstrap.pipeline import parse_source
 
 
 class IRModelTests(unittest.TestCase):
@@ -82,6 +88,81 @@ class IRModelTests(unittest.TestCase):
 
         with self.assertRaises(FrozenInstanceError):
             value.name = "v2"  # type: ignore[misc]
+
+    def test_lowering_function_with_binary_return(self) -> None:
+        source = (
+            "function add(left: Int, right: Int): Int { "
+            "return left + right; "
+            "}"
+        )
+
+        module = lower_compilation_unit(parse_source(source))
+
+        self.assertEqual(len(module.functions), 1)
+
+        function = module.functions[0]
+        self.assertEqual(function.name, "add")
+        self.assertEqual(
+            tuple(parameter.name for parameter in function.parameters),
+            ("left", "right"),
+        )
+        self.assertEqual(function.return_type, "Int")
+        self.assertEqual(len(function.blocks), 1)
+
+        opcodes = tuple(
+            instruction.opcode
+            for instruction in function.blocks[0].instructions
+        )
+        self.assertEqual(
+            opcodes,
+            (
+                IROpcode.PARAMETER,
+                IROpcode.PARAMETER,
+                IROpcode.LOAD,
+                IROpcode.LOAD,
+                IROpcode.BINARY,
+                IROpcode.RETURN,
+            ),
+        )
+
+    def test_lowering_is_deterministic(self) -> None:
+        source = (
+            "function calculate(value: Int): Int { "
+            "return value * 2; "
+            "}"
+        )
+
+        first = lower_compilation_unit(parse_source(source))
+        second = lower_compilation_unit(parse_source(source))
+
+        self.assertEqual(first, second)
+
+    def test_lowering_rejects_unsupported_top_level_construct(
+        self,
+    ) -> None:
+        source = "class User {}"
+
+        with self.assertRaisesRegex(
+            IRLoweringError,
+            "Unsupported top-level construct",
+        ):
+            lower_compilation_unit(parse_source(source))
+
+    def test_lowering_rejects_unsupported_control_flow(
+        self,
+    ) -> None:
+        source = (
+            "function choose(flag: Bool): Int { "
+            "if (flag) { return 1; } "
+            "return 0; "
+            "}"
+        )
+
+        with self.assertRaisesRegex(
+            IRLoweringError,
+            "Unsupported function-body construct: IfStatement",
+        ):
+            lower_compilation_unit(parse_source(source))
 
 
 if __name__ == "__main__":
